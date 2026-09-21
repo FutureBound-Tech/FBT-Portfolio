@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { ArrowRight, ChevronDown, Calendar } from 'lucide-react';
+import { ArrowRight, ChevronDown, Calendar, MapPin } from 'lucide-react';
 
 interface HeroProps {
   onBookAppointment: () => void;
@@ -17,17 +17,36 @@ const Hero: React.FC<HeroProps> = ({ onBookAppointment }) => {
   return (
     <section className="relative min-h-screen flex items-center justify-center pt-20 px-6">
       <div className="max-w-4xl mx-auto text-center z-10">
-        <div className="inline-block px-4 py-1.5 mb-8 rounded-full border border-blue-500/30 bg-blue-500/5 text-blue-400 text-xs font-bold uppercase tracking-widest animate-pulse">
-          Innovation Meets Precision
+
+        {/* Location badge — local SEO signal */}
+        <div className="flex items-center justify-center gap-2 mb-4">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold">
+            <MapPin size={11} />
+            Nellore, Andhra Pradesh
+          </div>
         </div>
-        
-        <h1 className="text-5xl md:text-8xl font-black mb-8 leading-tight tracking-tighter">
-          Evolving The <span className="gradient-text">Future</span> <br />
-          Of IT & Finance
+
+        <div className="inline-block px-4 py-1.5 mb-6 rounded-full border border-blue-500/30 bg-blue-500/5 text-blue-400 text-xs font-bold uppercase tracking-widest animate-pulse">
+          #1 Software Company in Nellore
+        </div>
+
+        <h1 className="text-3xl sm:text-5xl md:text-6xl font-black mb-4 leading-tight tracking-tight flex flex-col items-center justify-center">
+          <span>Evolving The <span className="gradient-text">Future</span></span>
+          <span className="inline-flex items-center my-2 sm:my-2.5">
+            <span className="px-3.5 py-0.5 rounded-full text-xs sm:text-sm font-bold text-blue-400 bg-blue-500/10 border border-blue-500/20 shadow-sm shadow-blue-500/10 tracking-widest lowercase">
+              of
+            </span>
+          </span>
+          <span className="text-white">IT &amp; Finance</span>
         </h1>
-        
-        <p className="text-lg md:text-xl text-gray-400 mb-10 max-w-2xl mx-auto leading-relaxed">
-          Future Bound Tech is a powerhouse of digital transformation. We blend high-end software development with expert financial consultation to scale your vision.
+
+        {/* SEO-rich subheading — h2 level content for crawlers */}
+        <p className="text-xs sm:text-sm font-semibold text-blue-400/80 tracking-wider mb-4 uppercase">
+          IT Solutions · Web Development · Mobile Apps · Software Coaching · Nellore
+        </p>
+
+        <p className="text-base sm:text-lg text-gray-300 mb-10 max-w-2xl mx-auto leading-relaxed">
+          Future Bound Tech is Nellore's powerhouse of digital transformation. As the leading software company in Nellore, we deliver expert web development, mobile application development, custom IT solutions, and software coaching — built to scale your vision across Andhra Pradesh and beyond.
         </p>
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -39,15 +58,15 @@ const Hero: React.FC<HeroProps> = ({ onBookAppointment }) => {
             Book Consultation
           </button>
           <button
-            onClick={() => scrollTo('portfolio')}
+            onClick={() => scrollTo('careers')}
             className="px-8 py-4 rounded-full glass font-bold hover:bg-white/10 transition-all text-white"
           >
-            View Showcase
+            Explore Careers
           </button>
         </div>
       </div>
 
-      <div 
+      <div
         className="absolute bottom-10 left-1/2 -translate-x-1/2 animate-bounce text-gray-500 cursor-pointer"
         onClick={() => scrollTo('services')}
       >

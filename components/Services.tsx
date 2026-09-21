@@ -13,23 +13,23 @@ const Services: React.FC = () => {
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-blue-500/5 blur-[120px] rounded-full pointer-events-none"></div>
 
       <div className="max-w-7xl mx-auto">
-        <div className="text-center mb-24">
-          <span className="text-blue-500 font-bold tracking-widest uppercase text-xs mb-4 block">Our Capabilities</span>
-          <h2 className="text-5xl md:text-7xl font-black mb-8 leading-tight">Mastering Two Worlds</h2>
-          <p className="text-gray-400 max-w-2xl mx-auto text-lg">
-            We bridge the gap between complex software engineering and strategic financial compliance, providing a unified growth engine for your business.
+        <div className="text-center mb-20">
+          <span className="text-blue-500 font-bold tracking-widest uppercase text-xs mb-3 block">Nellore's Leading IT Company</span>
+          <h2 className="text-3xl sm:text-4xl md:text-5xl font-black mb-6 leading-tight">Expert IT Services &amp; Software Solutions in Nellore</h2>
+          <p className="text-gray-300 max-w-2xl mx-auto text-base sm:text-lg leading-relaxed">
+            Future Bound Tech — Nellore's most trusted software company — bridges the gap between complex software engineering and strategic financial compliance. Serving businesses across Nellore and Andhra Pradesh with world-class IT solutions.
           </p>
         </div>
 
         {/* Tech Section Highlight */}
-        <div className="mb-32">
-          <div className="flex flex-col md:flex-row items-center gap-8 mb-16">
-            <div className="p-5 bg-gradient-to-br from-blue-500 to-indigo-600 text-white rounded-[2rem] shadow-xl shadow-blue-500/20">
-              <Code size={40} />
+        <div className="mb-24">
+          <div className="flex flex-col md:flex-row items-center gap-6 mb-12">
+            <div className="p-4 bg-gradient-to-br from-blue-500 to-indigo-600 text-white rounded-2xl shadow-xl shadow-blue-500/20">
+              <Code size={32} />
             </div>
             <div className="text-center md:text-left">
-              <h3 className="text-4xl font-black mb-2 tracking-tight">Software Engineering</h3>
-              <p className="text-blue-400 font-medium">Building the infrastructure of tomorrow.</p>
+              <h3 className="text-2xl sm:text-3xl font-bold mb-1.5 tracking-tight">Web &amp; Software Development — Nellore</h3>
+              <p className="text-blue-400 font-medium text-sm sm:text-base">Top-rated web developers &amp; mobile app developers in Nellore, building the infrastructure of tomorrow.</p>
             </div>
             <div className="hidden md:block h-px flex-1 bg-gradient-to-r from-blue-500/30 to-transparent"></div>
           </div>
@@ -40,17 +40,17 @@ const Services: React.FC = () => {
                 key={service.id} 
                 className="group p-8 rounded-[2.5rem] glass border border-white/10 hover:border-blue-500/50 transition-all duration-500 hover:shadow-2xl hover:shadow-blue-500/10 relative overflow-hidden"
               >
-                <div className="mb-8 inline-flex p-4 rounded-2xl bg-blue-500 text-white shadow-lg shadow-blue-500/20 group-hover:scale-110 transition-transform">
+                <div className="mb-6 inline-flex p-3.5 rounded-2xl bg-blue-500 text-white shadow-lg shadow-blue-500/20 group-hover:scale-110 transition-transform">
                   {getIcon(service.icon)}
                 </div>
-                <h4 className="text-2xl font-bold mb-4">{service.title}</h4>
-                <p className="text-gray-400 mb-8 text-sm leading-relaxed">
+                <h4 className="text-xl sm:text-2xl font-bold mb-3">{service.title}</h4>
+                <p className="text-gray-400 mb-6 text-sm leading-relaxed">
                   {service.description}
                 </p>
-                <div className="space-y-3">
+                <div className="space-y-2.5">
                   {service.features.map((feature, idx) => (
-                    <div key={idx} className="flex items-center gap-3 text-xs font-semibold text-gray-300">
-                      <CheckCircle2 size={14} className="text-blue-500" />
+                    <div key={idx} className="flex items-center gap-2.5 text-xs sm:text-sm font-medium text-gray-300">
+                      <CheckCircle2 size={15} className="text-blue-500 shrink-0" />
                       {feature}
                     </div>
                   ))}
@@ -62,13 +62,13 @@ const Services: React.FC = () => {
 
         {/* Finance Section Highlight */}
         <div id="finance" className="relative">
-          <div className="flex flex-col md:flex-row items-center gap-8 mb-16">
-            <div className="p-5 bg-gradient-to-br from-purple-500 to-pink-600 text-white rounded-[2rem] shadow-xl shadow-purple-500/20">
-              <TrendingUp size={40} />
+          <div className="flex flex-col md:flex-row items-center gap-6 mb-12">
+            <div className="p-4 bg-gradient-to-br from-purple-500 to-pink-600 text-white rounded-2xl shadow-xl shadow-purple-500/20">
+              <TrendingUp size={32} />
             </div>
             <div className="text-center md:text-left">
-              <h3 className="text-4xl font-black mb-2 tracking-tight">Financial Management</h3>
-              <p className="text-purple-400 font-medium">Strategic compliance for sustainable growth.</p>
+              <h3 className="text-2xl sm:text-3xl font-bold mb-1.5 tracking-tight">Financial Management — Nellore</h3>
+              <p className="text-purple-400 font-medium text-sm sm:text-base">Trusted financial services for businesses in Nellore — strategic compliance for sustainable growth.</p>
             </div>
             <div className="hidden md:block h-px flex-1 bg-gradient-to-r from-purple-500/30 to-transparent"></div>
           </div>
@@ -77,18 +77,18 @@ const Services: React.FC = () => {
             {financeServices.map((service) => (
               <div 
                 key={service.id} 
-                className="group p-8 rounded-3xl bg-white/[0.03] border border-white/5 hover:bg-purple-600/5 hover:border-purple-500/30 transition-all duration-500"
+                className="group p-6 rounded-3xl bg-white/[0.03] border border-white/5 hover:bg-purple-600/5 hover:border-purple-500/30 transition-all duration-500"
               >
-                <div className="mb-6 text-purple-500 group-hover:scale-110 transition-transform">
+                <div className="mb-4 text-purple-500 group-hover:scale-110 transition-transform">
                   {getIcon(service.icon)}
                 </div>
-                <h4 className="text-xl font-bold mb-3">{service.title}</h4>
-                <p className="text-gray-400 text-xs mb-6 leading-relaxed">
+                <h4 className="text-lg sm:text-xl font-bold mb-2">{service.title}</h4>
+                <p className="text-gray-400 text-xs sm:text-sm mb-5 leading-relaxed">
                   {service.description}
                 </p>
                 <div className="space-y-2 pt-4 border-t border-white/5">
                   {service.features.map((feature, idx) => (
-                    <div key={idx} className="text-[10px] uppercase tracking-wider text-purple-400/80 font-bold">
+                    <div key={idx} className="text-xs uppercase tracking-wider text-purple-400/90 font-semibold">
                       • {feature}
                     </div>
                   ))}

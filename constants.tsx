@@ -22,7 +22,7 @@ export const ADMIN_EMAIL = "futurebound.tech@gmail.com";
 export const CONTACT: ContactInfo = {
   phone: "99512 99524",
   email: "info@futureboundtech.online",
-  address: "Kovur, Andhra Pradesh",
+  address: "Nellore, Andhra Pradesh",
   location: "India"
 };
 
@@ -58,8 +58,41 @@ export const EMAILJS_CONFIG = {
   SERVICE_ID: 'service_ifj3zce',
   PUBLIC_KEY: '7SV2Z2LgC1GENjNY_',
   APPOINTMENT_TEMPLATE_ID: 'template_vu8msan', // Your appointment template ID
-  CONTACT_TEMPLATE_ID: 'template_za9og46' // Your contact template ID
+  CONTACT_TEMPLATE_ID: 'template_za9og46', // Your contact template ID
+  CAREER_TEMPLATE_ID: 'template_za9og46' // Career form template ID (can be customized)
 };
+
+export const STATIC_MEET_LINK = 'https://meet.google.com/koi-medw-gni';
+
+export const CAREER_DOMAINS = [
+  'Full Stack Development',
+  'Backend Development',
+  'Artificial Intelligence (AI)',
+  'Data Analyst',
+  'SAP',
+  'Other IT Domains'
+];
+
+export const CORPORATE_TIME_SLOTS = [
+  // Morning Session (8 slots)
+  { id: 'm1', label: '09:00 AM - 09:30 AM', time: '09:00 AM', session: 'morning' },
+  { id: 'm2', label: '09:30 AM - 10:00 AM', time: '09:30 AM', session: 'morning' },
+  { id: 'm3', label: '10:00 AM - 10:30 AM', time: '10:00 AM', session: 'morning' },
+  { id: 'm4', label: '10:30 AM - 11:00 AM', time: '10:30 AM', session: 'morning' },
+  { id: 'm5', label: '11:00 AM - 11:30 AM', time: '11:00 AM', session: 'morning' },
+  { id: 'm6', label: '11:30 AM - 12:00 PM', time: '11:30 AM', session: 'morning' },
+  { id: 'm7', label: '12:00 PM - 12:30 PM', time: '12:00 PM', session: 'morning' },
+  { id: 'm8', label: '12:30 PM - 01:00 PM', time: '12:30 PM', session: 'morning' },
+  // Afternoon Session (8 slots)
+  { id: 'a1', label: '02:00 PM - 02:30 PM', time: '02:00 PM', session: 'afternoon' },
+  { id: 'a2', label: '02:30 PM - 03:00 PM', time: '02:30 PM', session: 'afternoon' },
+  { id: 'a3', label: '03:00 PM - 03:30 PM', time: '03:00 PM', session: 'afternoon' },
+  { id: 'a4', label: '03:30 PM - 04:00 PM', time: '03:30 PM', session: 'afternoon' },
+  { id: 'a5', label: '04:00 PM - 04:30 PM', time: '04:00 PM', session: 'afternoon' },
+  { id: 'a6', label: '04:30 PM - 05:00 PM', time: '04:30 PM', session: 'afternoon' },
+  { id: 'a7', label: '05:00 PM - 05:30 PM', time: '05:00 PM', session: 'afternoon' },
+  { id: 'a8', label: '05:30 PM - 06:00 PM', time: '05:30 PM', session: 'afternoon' },
+];
 
 export interface DetailedService extends Service {
   features: string[];

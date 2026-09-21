@@ -44,8 +44,8 @@ const Navbar: React.FC<NavbarProps> = ({ onBookAppointment }) => {
   const navLinks = [
     { name: 'Home', href: '#' },
     { name: 'Services', href: '#services' },
-    { name: 'Portfolio', href: '#portfolio' },
     { name: 'Finance', href: '#finance' },
+    { name: 'Career', href: '#careers' },
     { name: 'Contact', href: '#contact' },
   ];
 
@@ -54,9 +54,9 @@ const Navbar: React.FC<NavbarProps> = ({ onBookAppointment }) => {
       scrolled || isOpen ? 'py-4 glass border-b' : 'py-6 bg-transparent'
     }`}>
       <div className="max-w-7xl mx-auto px-6 flex justify-between items-center">
-        <button onClick={() => scrollTo('#')} className="flex items-center space-x-2 text-left">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
-            <span className="text-white font-bold text-xl">F</span>
+        <button onClick={() => scrollTo('#')} className="flex items-center space-x-3 text-left group">
+          <div className="w-10 h-10 rounded-xl bg-white border border-white/20 flex items-center justify-center p-1 shadow-md group-hover:scale-105 transition-transform overflow-hidden">
+            <img src="/logo.png" alt="Future Bound Tech Logo" className="w-full h-full object-contain scale-105" />
           </div>
           <span className="font-extrabold text-xl tracking-tight hidden sm:block">
             {COMPANY_NAME}

@@ -1,17 +1,50 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import Pillars from './components/Pillars';
 import Services from './components/Services';
-import Projects from './components/Projects';
+import Careers from './components/Careers';
 import Contact from './components/Contact';
+import SEOBlog from './components/SEOBlog';
 import Footer from './components/Footer';
 import AnimatedBackground from './components/AnimatedBackground';
 import AppointmentModal from './components/AppointmentModal';
+import AdminDashboard from './components/AdminDashboard';
 
 const App: React.FC = () => {
   const [isAppointmentModalOpen, setIsAppointmentModalOpen] = useState(false);
+  const [isAdminView, setIsAdminView] = useState(false);
+
+  useEffect(() => {
+    const checkPath = () => {
+      const path = window.location.pathname;
+      const hash = window.location.hash;
+      if (path === '/admin-mb' || hash === '#/admin-mb' || hash === '#admin-mb') {
+        setIsAdminView(true);
+      } else {
+        setIsAdminView(false);
+      }
+    };
+
+    checkPath();
+    window.addEventListener('popstate', checkPath);
+    window.addEventListener('hashchange', checkPath);
+    return () => {
+      window.removeEventListener('popstate', checkPath);
+      window.removeEventListener('hashchange', checkPath);
+    };
+  }, []);
+
+  const navigateToMain = () => {
+    window.history.pushState({}, '', '/');
+    setIsAdminView(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  if (isAdminView) {
+    return <AdminDashboard onBack={navigateToMain} />;
+  }
 
   return (
     <div className="relative min-h-screen">
@@ -25,7 +58,8 @@ const App: React.FC = () => {
           <Hero onBookAppointment={() => setIsAppointmentModalOpen(true)} />
           <Pillars />
           <Services />
-          <Projects />
+          <Careers />
+          <SEOBlog />
           <Contact />
         </main>
         <Footer />
