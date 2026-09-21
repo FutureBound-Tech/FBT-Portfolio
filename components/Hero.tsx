@@ -15,7 +15,7 @@ const Hero: React.FC<HeroProps> = ({ onBookAppointment }) => {
   };
 
   return (
-    <section className="relative min-h-screen flex items-center justify-center pt-20 px-6">
+    <section className="relative min-h-[85vh] md:min-h-screen flex items-center justify-center pt-24 pb-12 px-6">
       <div className="max-w-4xl mx-auto text-center z-10">
 
         {/* Location badge — local SEO signal */}

@@ -4,8 +4,8 @@ import { ShieldCheck, Zap, Scale, Cpu } from 'lucide-react';
 
 const Pillars: React.FC = () => {
   return (
-    <section className="py-24 px-6">
-      <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-12">
+    <section className="pt-4 pb-12 px-6">
+      <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8">
         {/* Software Pillar */}
         <div className="relative group p-10 rounded-[3rem] overflow-hidden bg-blue-600/5 border border-blue-500/10 hover:border-blue-500/30 transition-all flex flex-col justify-between h-full">
           <div className="absolute -bottom-20 -right-20 w-64 h-64 bg-blue-600/10 blur-3xl rounded-full group-hover:bg-blue-600/20 transition-colors"></div>

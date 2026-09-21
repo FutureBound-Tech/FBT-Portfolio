@@ -8,22 +8,22 @@ const Services: React.FC = () => {
   const financeServices = SERVICES.filter(s => s.category === 'finance');
 
   return (
-    <section id="services" className="py-32 px-6 relative overflow-hidden">
+    <section id="services" className="pt-8 pb-12 px-6 relative overflow-hidden">
       {/* Abstract Background Element */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-blue-500/5 blur-[120px] rounded-full pointer-events-none"></div>
 
       <div className="max-w-7xl mx-auto">
-        <div className="text-center mb-20">
+        <div className="text-center mb-12">
           <span className="text-blue-500 font-bold tracking-widest uppercase text-xs mb-3 block">Nellore's Leading IT Company</span>
-          <h2 className="text-3xl sm:text-4xl md:text-5xl font-black mb-6 leading-tight">Expert IT Services &amp; Software Solutions in Nellore</h2>
+          <h2 className="text-3xl sm:text-4xl md:text-5xl font-black mb-4 leading-tight">Expert IT Services &amp; Software Solutions in Nellore</h2>
           <p className="text-gray-300 max-w-2xl mx-auto text-base sm:text-lg leading-relaxed">
             Future Bound Tech — Nellore's most trusted software company — bridges the gap between complex software engineering and strategic financial compliance. Serving businesses across Nellore and Andhra Pradesh with world-class IT solutions.
           </p>
         </div>
 
         {/* Tech Section Highlight */}
-        <div className="mb-24">
-          <div className="flex flex-col md:flex-row items-center gap-6 mb-12">
+        <div className="mb-14">
+          <div className="flex flex-col md:flex-row items-center gap-6 mb-10">
             <div className="p-4 bg-gradient-to-br from-blue-500 to-indigo-600 text-white rounded-2xl shadow-xl shadow-blue-500/20">
               <Code size={32} />
             </div>

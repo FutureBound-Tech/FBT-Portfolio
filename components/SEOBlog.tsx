@@ -89,11 +89,11 @@ const SEOBlog: React.FC = () => {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   return (
-    <section id="blog" className="pt-16 pb-6 px-6 relative overflow-hidden">
+    <section id="blog" className="pt-8 pb-6 px-6 relative overflow-hidden">
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-blue-500/5 blur-[150px] rounded-full pointer-events-none" />
 
       <div className="max-w-7xl mx-auto">
-        <div className="text-center mb-16">
+        <div className="text-center mb-10">
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-blue-500/30 bg-blue-500/5 text-blue-400 text-xs sm:text-sm font-bold uppercase tracking-widest mb-4">
             <BookOpen size={14} />
             Insights from Nellore&apos;s Leading Software Company
