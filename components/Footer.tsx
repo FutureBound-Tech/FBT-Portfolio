@@ -7,7 +7,7 @@ const Footer: React.FC = () => {
   return (
     <footer className="border-t border-white/5">
       {/* SEO Content Block */}
-      <div className="py-16 px-6 bg-white/[0.01]">
+      <div className="pt-10 pb-12 px-6 bg-white/[0.01]">
         <div className="max-w-7xl mx-auto">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12 mb-16">
 
