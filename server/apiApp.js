@@ -12,4 +12,6 @@ export const apiApp = express();
 apiApp.use(cors());
 apiApp.use(express.json());
 apiApp.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+apiApp.use('/api', apiRouter);
 apiApp.use('/', apiRouter);
+

@@ -1,5 +1,9 @@
 import express from 'express';
 import { ObjectId } from 'mongodb';
+import multer from 'multer';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 import { getCollection } from './db.js';
 import { 
   handleCareerEmails, 
@@ -12,14 +16,18 @@ import {
 export const apiRouter = express.Router();
 apiRouter.use(express.json());
 
-import multer from 'multer';
-import fs from 'fs';
-import path from 'path';
+// Ensure upload directory exists (use tmp in serverless environments like Vercel)
+const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+const uploadDir = isServerless
+  ? path.join(os.tmpdir(), 'resumes')
+  : path.join(process.cwd(), 'server', 'uploads', 'resumes');
 
-// Ensure upload directory exists
-const uploadDir = path.join(process.cwd(), 'server', 'uploads', 'resumes');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
+try {
+  if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+  }
+} catch (err) {
+  console.warn('⚠️ Warning: Could not create upload directory:', err.message);
 }
 
 const storage = multer.diskStorage({
