@@ -13,6 +13,7 @@
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "hostinger-mail-api-sdk": "^1.19.4",
     "lucide-react": "^0.563.0",
     "mongodb": "^7.6.0",
     "multer": "^2.4.0",

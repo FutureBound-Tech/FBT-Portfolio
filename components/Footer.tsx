@@ -3,7 +3,33 @@ import React from 'react';
 import { COMPANY_NAME, CONTACT } from '../constants';
 import { MapPin, Phone, Mail } from 'lucide-react';
 
-const Footer: React.FC = () => {
+interface FooterProps {
+  onOpenReviewModal?: () => void;
+}
+
+const Footer: React.FC<FooterProps> = ({ onOpenReviewModal }) => {
+  const navigateToCareers = (e: React.MouseEvent) => {
+    e.preventDefault();
+    window.history.pushState({}, '', '/careers');
+    window.dispatchEvent(new Event('popstate'));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const navigateToSection = (e: React.MouseEvent, sectionId: string) => {
+    e.preventDefault();
+    if (window.location.pathname !== '/' && window.location.pathname !== '') {
+      window.history.pushState({}, '', '/' + sectionId);
+      window.dispatchEvent(new Event('popstate'));
+      setTimeout(() => {
+        const el = document.getElementById(sectionId.replace('#', ''));
+        if (el) el.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+    } else {
+      const el = document.getElementById(sectionId.replace('#', ''));
+      if (el) el.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
   return (
     <footer className="border-t border-white/5">
       {/* SEO Content Block */}
@@ -46,12 +72,12 @@ const Footer: React.FC = () => {
             <div>
               <h4 className="text-white font-bold mb-5 text-sm uppercase tracking-widest">IT Services in Nellore</h4>
               <ul className="space-y-3 text-sm text-gray-400">
-                <li><a href="#services" className="hover:text-blue-400 transition-colors">Web Development — Nellore</a></li>
-                <li><a href="#services" className="hover:text-blue-400 transition-colors">Mobile App Development</a></li>
-                <li><a href="#services" className="hover:text-blue-400 transition-colors">Custom Software Solutions</a></li>
-                <li><a href="#services" className="hover:text-blue-400 transition-colors">IT Consulting &amp; Solutions</a></li>
-                <li><a href="#careers" className="hover:text-blue-400 transition-colors">Software Coaching — Nellore</a></li>
-                <li><a href="#careers" className="hover:text-blue-400 transition-colors">IT Training Institute Nellore</a></li>
+                <li><a href="#services" onClick={(e) => navigateToSection(e, '#services')} className="hover:text-blue-400 transition-colors">Web Development — Nellore</a></li>
+                <li><a href="#services" onClick={(e) => navigateToSection(e, '#services')} className="hover:text-blue-400 transition-colors">Mobile App Development</a></li>
+                <li><a href="#services" onClick={(e) => navigateToSection(e, '#services')} className="hover:text-blue-400 transition-colors">Custom Software Solutions</a></li>
+                <li><a href="#services" onClick={(e) => navigateToSection(e, '#services')} className="hover:text-blue-400 transition-colors">IT Consulting &amp; Solutions</a></li>
+                <li><a href="/careers" onClick={navigateToCareers} className="hover:text-blue-400 transition-colors">Software Coaching — Nellore</a></li>
+                <li><a href="/careers" onClick={navigateToCareers} className="hover:text-blue-400 transition-colors">IT Training Institute Nellore</a></li>
               </ul>
             </div>
 
@@ -75,20 +101,19 @@ const Footer: React.FC = () => {
               <span className="text-gray-600">Best Software Company in Nellore, Andhra Pradesh</span>
             </p>
 
-            <div className="flex space-x-6 text-sm text-gray-500">
-              <a href="#" className="hover:text-white transition-colors">Privacy</a>
-              <a href="#" className="hover:text-white transition-colors">Terms</a>
-              <a href="#" className="hover:text-white transition-colors">Support</a>
+            <div className="flex space-x-6 text-sm text-gray-500 items-center">
+              <a href="#" onClick={(e) => { e.preventDefault(); alert("Future Bound Tech Privacy Policy: We respect your privacy and never share your data."); }} className="hover:text-white transition-colors">Privacy</a>
+              <a href="#" onClick={(e) => { e.preventDefault(); alert("Future Bound Tech Terms: All client engagements and training programs adhere to standard service agreements."); }} className="hover:text-white transition-colors">Terms</a>
               <a
-                href="/admin-mb"
+                href="/support"
                 onClick={(e) => {
                   e.preventDefault();
-                  window.history.pushState({}, '', '/admin-mb');
+                  window.history.pushState({}, '', '/support');
                   window.dispatchEvent(new Event('popstate'));
                 }}
-                className="text-blue-500/80 hover:text-blue-400 transition-colors font-medium flex items-center gap-1"
+                className="text-amber-400/90 hover:text-amber-300 transition-colors font-medium flex items-center gap-1.5 cursor-pointer"
               >
-                Admin Portal
+                <span>⭐ Support</span>
               </a>
             </div>
           </div>

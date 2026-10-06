@@ -27,9 +27,56 @@ import {
   ChevronLeft,
   ChevronRight,
   ShieldCheck,
-  CalendarDays
+  CalendarDays,
+  PlusCircle,
+  Copy,
+  Check,
+  Eye,
+  Award,
+  FileText,
+  AlertCircle,
+  SlidersHorizontal,
+  X,
+  Send,
+  Loader2
 } from 'lucide-react';
-import { COMPANY_NAME } from '../constants';
+import { COMPANY_NAME, STATIC_MEET_LINK } from '../constants';
+import { JobPosting } from './JobApplicationModal';
+
+interface CandidateJobApplication {
+  _id: string;
+  applicationId: string;
+  jobId: string;
+  jobTitle: string;
+  jobType: 'Job' | 'Internship';
+  name: string;
+  email: string;
+  phone: string;
+  location: string;
+  resumeUrl?: string;
+  highestQualification: string;
+  collegeName: string;
+  sector: string;
+  placeOfEducation: string;
+  score: string;
+  yearOfCompletion: string;
+  jobExperienceDetails: string;
+  gender: string;
+  dob: string;
+  agreedTerms: boolean;
+  status: 'Applied' | 'Shortlisted' | 'Interview Scheduled' | 'Hired' | 'Dropped';
+  offerDetails?: {
+    offerId: string;
+    candidateName: string;
+    candidateEmail: string;
+    jobTitle: string;
+    jobType: string;
+    joiningDate?: string;
+    compensation?: string;
+    issuedAt?: string;
+  };
+  createdAt: string;
+}
 
 interface CareerApp {
   _id: string;
@@ -66,6 +113,20 @@ interface AppointmentBooking {
   bookedAt: string;
 }
 
+interface OfferRecord {
+  _id?: string;
+  offerId: string;
+  candidateName: string;
+  candidateEmail: string;
+  jobTitle: string;
+  jobType: string;
+  jobId?: string;
+  joiningDate?: string;
+  compensation?: string;
+  issuedAt: string;
+  status: string;
+}
+
 interface AdminDashboardProps {
   onBack: () => void;
 }
@@ -79,30 +140,56 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [loginError, setLoginError] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
 
-  // Tab & View Modes
-  const [activeTab, setActiveTab] = useState<'careers' | 'contacts' | 'appointments'>('careers');
-  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
+  // Tabs
+  const [activeTab, setActiveTab] = useState<'jobApplications' | 'postJobs' | 'verifiedOffers' | 'legacyCareers' | 'contacts' | 'appointments'>('jobApplications');
   const [loading, setLoading] = useState(true);
   
-  // Filtering & Search
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedDomain, setSelectedDomain] = useState('All');
-  const [dateFilter, setDateFilter] = useState<'all' | 'today' | '7days' | '30days' | 'custom'>('all');
-  const [customDate, setCustomDate] = useState('');
-
-  // Pagination
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-
   // Data Store
-  const [careers, setCareers] = useState<CareerApp[]>([]);
+  const [jobs, setJobs] = useState<JobPosting[]>([]);
+  const [jobApplications, setJobApplications] = useState<CandidateJobApplication[]>([]);
+  const [verifiedOffers, setVerifiedOffers] = useState<OfferRecord[]>([]);
+  const [legacyCareers, setLegacyCareers] = useState<CareerApp[]>([]);
   const [contacts, setContacts] = useState<ContactInquiry[]>([]);
   const [appointments, setAppointments] = useState<AppointmentBooking[]>([]);
   const [notification, setNotification] = useState('');
 
+  // Filtering & Search
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedJobFilter, setSelectedJobFilter] = useState('All');
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState('All');
+  const [dateFilter, setDateFilter] = useState<'all' | 'today' | '7days' | '30days'>('all');
+
+  // Modal: Create / Post Opportunity
+  const [isCreateJobOpen, setIsCreateJobOpen] = useState(false);
+  const [jobFormType, setJobFormType] = useState<'Job' | 'Internship'>('Job');
+  const [jobFormTitle, setJobFormTitle] = useState('');
+  const [jobFormKeyContext, setJobFormKeyContext] = useState('');
+  const [jobFormDescription, setJobFormDescription] = useState('');
+  const [jobFormDuration, setJobFormDuration] = useState('Full Time');
+  const [jobFormWorkMode, setJobFormWorkMode] = useState<'Remote' | 'Onsite' | 'Hybrid'>('Remote');
+  const [jobFormLocation, setJobFormLocation] = useState('');
+  const [jobFormGeneratingAI, setJobFormGeneratingAI] = useState(false);
+  const [jobFormSaving, setJobFormSaving] = useState(false);
+  const [jobFormError, setJobFormError] = useState('');
+
+  // Modal: View Candidate Application & Status Action
+  const [selectedAppForDetail, setSelectedAppForDetail] = useState<CandidateJobApplication | null>(null);
+  const [statusUpdateMode, setStatusUpdateMode] = useState<'idle' | 'shortlist' | 'interview' | 'hire' | 'drop'>('idle');
+  const [interviewDate, setInterviewDate] = useState('');
+  const [interviewTime, setInterviewTime] = useState('11:00 AM IST');
+  const [interviewLink, setInterviewLink] = useState(STATIC_MEET_LINK);
+  const [hireOfferId, setHireOfferId] = useState('');
+  const [hireJoiningDate, setHireJoiningDate] = useState('Immediate');
+  const [hireCompensation, setHireCompensation] = useState('Standard Stipend / Package');
+  const [statusUpdating, setStatusUpdating] = useState(false);
+  
+  // Ready-to-copy email template state
+  const [copiedTemplate, setCopiedTemplate] = useState<{ subject: string; body: string } | null>(null);
+  const [hasCopiedText, setHasCopiedText] = useState(false);
+
   const showNotification = (msg: string) => {
     setNotification(msg);
-    setTimeout(() => setNotification(''), 3500);
+    setTimeout(() => setNotification(''), 4000);
   };
 
   // Handle Login
@@ -122,7 +209,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
       if (res.ok && data.success) {
         sessionStorage.setItem('fbt_admin_auth', 'true');
         setIsAuthenticated(true);
-        showNotification('Login successful! Security alert email dispatched.');
+        showNotification('Login successful! Security alert dispatched to Hostinger mail.');
         fetchData();
       } else {
         setLoginError(data.message || 'Incorrect Admin Key');
@@ -140,19 +227,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
     setAdminKeyInput('');
   };
 
+  // Fetch all consolidated data
   const fetchData = async () => {
     setLoading(true);
     try {
       const res = await fetch('/api/admin/all');
       const json = await res.json();
       if (json.success && json.data) {
-        setCareers(json.data.careers || []);
+        setJobs(json.data.jobs || []);
+        setJobApplications(json.data.jobApplications || []);
+        setVerifiedOffers(json.data.offers || []);
+        setLegacyCareers(json.data.careers || []);
         setContacts(json.data.contacts || []);
         setAppointments(json.data.appointments || []);
       }
     } catch (err) {
       console.error('Failed to load admin data:', err);
-      showNotification('Error connecting to MongoDB backend');
+      showNotification('Error loading database records');
     } finally {
       setLoading(false);
     }
@@ -164,156 +255,304 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
     }
   }, [isAuthenticated]);
 
-  // Reset pagination on tab/filter change
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [activeTab, searchQuery, selectedDomain, dateFilter, customDate, pageSize]);
+  // AI Description Generator for New Job
+  const handleGenerateAIDescription = async (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    
+    let activeTitle = jobFormTitle.trim();
+    if (!activeTitle) {
+      activeTitle = jobFormType === 'Internship' ? 'Software Development Intern' : 'Full Stack Developer';
+      setJobFormTitle(activeTitle);
+    }
 
-  const deleteRecord = async (type: 'careers' | 'contacts' | 'appointments', id: string) => {
-    if (!window.confirm('Are you sure you want to delete this record from MongoDB?')) return;
+    setJobFormGeneratingAI(true);
+    setJobFormError('');
+
+    const generateClientFallbackDesc = () => {
+      const isIntern = jobFormType === 'Internship';
+      return `### About the Role
+Future Bound Tech is inviting passionate ${isIntern ? 'interns and aspiring engineers' : 'professionals'} to apply for the **${activeTitle}** (${jobFormType}) position. In this role, you will work on enterprise-grade software products, build modern architectures, and collaborate with experienced mentors.
+
+### Key Responsibilities
+- Develop, test, and maintain robust frontend and backend features.
+- Write clean, modular, and maintainable code adhering to industry standards.
+- Collaborate with the team on API integrations, UI responsiveness, and system performance.
+- ${jobFormKeyContext ? `Focus on domain requirements: ${jobFormKeyContext}` : 'Participate in agile sprints, code reviews, and architecture discussions.'}
+- Deliver scalable solutions that create measurable business value.
+
+### Qualifications & Requirements
+- Degree/Background in Computer Science, IT, Engineering, or related technical disciplines.
+- Hands-on familiarity with modern development tools and frameworks.
+- Strong analytical and problem-solving mindset with eagerness to learn.
+- Work Mode: ${jobFormWorkMode}${jobFormLocation ? ` (${jobFormLocation})` : ''} • Duration: ${jobFormDuration}.
+
+### What We Offer
+- Direct mentorship from seasoned software architects and tech leads.
+- Experience on live production systems and enterprise client deliverables.
+- Certificate of Completion, Letter of Recommendation, and fast-track hiring potential.`;
+    };
+
     try {
-      const res = await fetch(`/api/${type}/${id}`, { method: 'DELETE' });
+      const res = await fetch('/api/jobs/generate-description', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: activeTitle,
+          type: jobFormType,
+          keyContext: jobFormKeyContext,
+          duration: jobFormDuration,
+          workMode: jobFormWorkMode,
+          location: jobFormLocation
+        })
+      });
       const data = await res.json();
-      if (data.success) {
-        if (type === 'careers') setCareers(prev => prev.filter(c => c._id !== id));
-        if (type === 'contacts') setContacts(prev => prev.filter(c => c._id !== id));
-        if (type === 'appointments') setAppointments(prev => prev.filter(a => a._id !== id));
-        showNotification('Record deleted successfully');
+      if (res.ok && data.success && data.description) {
+        const descStr = String(data.description);
+        setJobFormDescription(descStr);
+        showNotification('✨ AI description generated successfully!');
+      } else {
+        const fallback = generateClientFallbackDesc();
+        setJobFormDescription(fallback);
+        showNotification('✨ Description generated!');
       }
     } catch (err) {
-      console.error('Failed to delete:', err);
+      const fallback = generateClientFallbackDesc();
+      setJobFormDescription(fallback);
+      showNotification('✨ Description generated!');
+    } finally {
+      setJobFormGeneratingAI(false);
     }
   };
 
-  // Export to CSV
-  const exportToCSV = () => {
-    if (activeTab === 'careers') {
-      if (careers.length === 0) return;
-      const headers = ['Name', 'Email', 'Phone', 'State', 'City', 'Institute/University', 'Qualification', 'Domain', 'Message', 'Submitted Date'];
-      const rows = careers.map(c => [
-        `"${c.name}"`,
-        `"${c.email}"`,
-        `"${c.phone}"`,
-        `"${c.state || ''}"`,
-        `"${c.city || ''}"`,
-        `"${c.institute_university || ''}"`,
-        `"${c.qualification || ''}"`,
-        `"${c.domain || ''}"`,
-        `"${(c.message || '').replace(/"/g, '""')}"`,
-        `"${new Date(c.createdAt).toLocaleString()}"`
-      ]);
-      downloadCSV('FBT_Career_Applications', [headers.join(','), ...rows.map(e => e.join(','))].join('\n'));
-    } else if (activeTab === 'contacts') {
-      if (contacts.length === 0) return;
-      const headers = ['Name', 'Email', 'Subject', 'Message', 'Date'];
-      const rows = contacts.map(c => [
-        `"${c.name}"`,
-        `"${c.email}"`,
-        `"${c.subject}"`,
-        `"${(c.message || '').replace(/"/g, '""')}"`,
-        `"${new Date(c.createdAt).toLocaleString()}"`
-      ]);
-      downloadCSV('FBT_Contact_Inquiries', [headers.join(','), ...rows.map(e => e.join(','))].join('\n'));
-    } else if (activeTab === 'appointments') {
-      if (appointments.length === 0) return;
-      const headers = ['Client Name', 'Client Email', 'Date', 'Time Slot', 'Service', 'Meet Link', 'Booked At'];
-      const rows = appointments.map(a => [
-        `"${a.client_name}"`,
-        `"${a.client_email}"`,
-        `"${a.appointment_date}"`,
-        `"${a.appointment_time}"`,
-        `"${a.service_type}"`,
-        `"${a.meet_link || ''}"`,
-        `"${new Date(a.bookedAt).toLocaleString()}"`
-      ]);
-      downloadCSV('FBT_Consultation_Bookings', [headers.join(','), ...rows.map(e => e.join(','))].join('\n'));
+  // Create Job / Internship Posting
+  const handleSaveJobPosting = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!jobFormTitle.trim() || !jobFormDescription.trim()) {
+      setJobFormError('Please fill in both Title and Description.');
+      return;
+    }
+    if ((jobFormWorkMode === 'Onsite' || jobFormWorkMode === 'Hybrid') && !jobFormLocation.trim()) {
+      setJobFormError('Location is required for Onsite / Hybrid postings.');
+      return;
+    }
+
+    setJobFormSaving(true);
+    setJobFormError('');
+
+    try {
+      const res = await fetch('/api/jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: jobFormType,
+          title: jobFormTitle,
+          keyContext: jobFormKeyContext,
+          description: jobFormDescription,
+          duration: jobFormDuration,
+          workMode: jobFormWorkMode,
+          location: jobFormLocation
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showNotification(`🎉 ${jobFormType} "${jobFormTitle}" created and published!`);
+        setIsCreateJobOpen(false);
+        // Reset form
+        setJobFormTitle('');
+        setJobFormKeyContext('');
+        setJobFormDescription('');
+        setJobFormLocation('');
+        fetchData();
+      } else {
+        setJobFormError(data.message || 'Failed to save job posting');
+      }
+    } catch (err) {
+      setJobFormError('Error communicating with database server.');
+    } finally {
+      setJobFormSaving(false);
     }
   };
 
-  const downloadCSV = (filename: string, content: string) => {
-    const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+  // Toggle Job Status Active/Closed
+  const toggleJobStatus = async (job: JobPosting) => {
+    const newStatus = job.status === 'Active' ? 'Closed' : 'Active';
+    try {
+      const res = await fetch(`/api/jobs/${job._id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      });
+      if (res.ok) {
+        setJobs(prev => prev.map(j => j._id === job._id ? { ...j, status: newStatus } : j));
+        showNotification(`Job ${job.jobId} marked as ${newStatus}`);
+      }
+    } catch (err) {
+      console.error('Failed to update job status:', err);
+    }
+  };
+
+  // Delete Job Posting
+  const deleteJob = async (id: string) => {
+    if (!window.confirm('Delete this job posting permanently?')) return;
+    try {
+      const res = await fetch(`/api/jobs/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setJobs(prev => prev.filter(j => j._id !== id));
+        showNotification('Job opportunity removed');
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Open Application Detail Modal & prepare defaults
+  const handleOpenAppDetail = (app: CandidateJobApplication) => {
+    setSelectedAppForDetail(app);
+    setStatusUpdateMode('idle');
+    setInterviewDate(new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
+    setHireOfferId(`FBT-${app.jobType === 'Internship' ? '01I' : '01J'}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`);
+    setCopiedTemplate(null);
+    setHasCopiedText(false);
+  };
+
+  // Update Application Status & Auto-Send Email
+  const handleUpdateApplicationStatus = async (newStatus: CandidateJobApplication['status']) => {
+    if (!selectedAppForDetail) return;
+    setStatusUpdating(true);
+
+    try {
+      const payload: any = { status: newStatus };
+      if (newStatus === 'Interview Scheduled') {
+        payload.interviewDate = interviewDate;
+        payload.interviewTime = interviewTime;
+        payload.interviewLink = interviewLink;
+      } else if (newStatus === 'Hired') {
+        payload.offerId = hireOfferId.trim();
+        payload.joiningDate = hireJoiningDate;
+        payload.compensation = hireCompensation;
+      }
+
+      const res = await fetch(`/api/job-applications/${selectedAppForDetail._id}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showNotification(`✅ Status changed to "${newStatus}". Automated email sent to candidate!`);
+        if (data.manualTemplate) {
+          setCopiedTemplate(data.manualTemplate);
+        }
+        setSelectedAppForDetail(prev => prev ? { ...prev, status: newStatus, offerDetails: data.offerId ? { offerId: data.offerId, candidateName: prev.name, candidateEmail: prev.email, jobTitle: prev.jobTitle, jobType: prev.jobType, issuedAt: new Date().toISOString() } : prev.offerDetails } : null);
+        fetchData();
+      } else {
+        showNotification(data.message || 'Error updating status');
+      }
+    } catch (err) {
+      console.error('Status update error:', err);
+      showNotification('Error updating application status');
+    } finally {
+      setStatusUpdating(false);
+    }
+  };
+
+  // Copy email text helper
+  const handleCopyEmailText = () => {
+    if (!copiedTemplate) return;
+    const textToCopy = `Subject: ${copiedTemplate.subject}\nTo: ${copiedTemplate.to}\n\n${copiedTemplate.body}`;
+    navigator.clipboard.writeText(textToCopy);
+    setHasCopiedText(true);
+    setTimeout(() => setHasCopiedText(false), 3000);
+    showNotification('📋 Email template copied to clipboard!');
+  };
+
+  // Delete Job Application
+  const deleteJobApp = async (id: string) => {
+    if (!window.confirm('Delete candidate application record from database?')) return;
+    try {
+      const res = await fetch(`/api/job-applications/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setJobApplications(prev => prev.filter(a => a._id !== id));
+        if (selectedAppForDetail?._id === id) setSelectedAppForDetail(null);
+        showNotification('Candidate application deleted');
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Date Filter helper
+  const isWithinDate = (isoDate: string) => {
+    if (dateFilter === 'all') return true;
+    const itemDate = new Date(isoDate);
+    const now = new Date();
+    if (dateFilter === 'today') return itemDate.toDateString() === now.toDateString();
+    if (dateFilter === '7days') return itemDate >= new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    if (dateFilter === '30days') return itemDate >= new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    return true;
+  };
+
+  // Filtered Applications Pipeline
+  const filteredJobApps = useMemo(() => {
+    return jobApplications.filter(app => {
+      const matchesJob = selectedJobFilter === 'All' || app.jobId === selectedJobFilter;
+      const matchesStatus = selectedStatusFilter === 'All' || app.status === selectedStatusFilter;
+      const matchesDate = isWithinDate(app.createdAt);
+      const q = searchQuery.toLowerCase();
+      const matchesSearch = 
+        !searchQuery ||
+        app.name.toLowerCase().includes(q) ||
+        app.email.toLowerCase().includes(q) ||
+        app.phone.includes(q) ||
+        app.collegeName.toLowerCase().includes(q) ||
+        app.applicationId.toLowerCase().includes(q) ||
+        app.jobTitle.toLowerCase().includes(q);
+      return matchesJob && matchesStatus && matchesDate && matchesSearch;
+    });
+  }, [jobApplications, selectedJobFilter, selectedStatusFilter, dateFilter, searchQuery]);
+
+  // Export Applications to CSV
+  const exportAppsCSV = () => {
+    if (jobApplications.length === 0) return;
+    const headers = ['App ID', 'Job ID', 'Role', 'Type', 'Candidate Name', 'Email', 'Phone', 'Location', 'Qualification', 'College', 'Stream', 'Score', 'Passing Year', 'Experience', 'Gender', 'DOB', 'Status', 'Offer ID', 'Applied At'];
+    const rows = filteredJobApps.map(a => [
+      `"${a.applicationId}"`,
+      `"${a.jobId}"`,
+      `"${a.jobTitle}"`,
+      `"${a.jobType}"`,
+      `"${a.name}"`,
+      `"${a.email}"`,
+      `"${a.phone}"`,
+      `"${a.location}"`,
+      `"${a.highestQualification}"`,
+      `"${a.collegeName}"`,
+      `"${a.sector}"`,
+      `"${a.score}"`,
+      `"${a.yearOfCompletion}"`,
+      `"${(a.jobExperienceDetails || '').replace(/"/g, '""')}"`,
+      `"${a.gender}"`,
+      `"${a.dob}"`,
+      `"${a.status}"`,
+      `"${a.offerDetails?.offerId || ''}"`,
+      `"${new Date(a.createdAt).toLocaleString()}"`
+    ]);
+    const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.setAttribute('download', `${filename}_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `FBT_Job_Applications_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-  // Date filtering helper
-  const isWithinDateFilter = (isoDateString: string) => {
-    if (dateFilter === 'all') return true;
-    const itemDate = new Date(isoDateString);
-    const now = new Date();
-    
-    if (dateFilter === 'today') {
-      return itemDate.toDateString() === now.toDateString();
-    }
-    if (dateFilter === '7days') {
-      const past7 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      return itemDate >= past7;
-    }
-    if (dateFilter === '30days') {
-      const past30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-      return itemDate >= past30;
-    }
-    if (dateFilter === 'custom' && customDate) {
-      const custom = new Date(customDate);
-      return itemDate.toDateString() === custom.toDateString();
-    }
-    return true;
-  };
-
-  // Filtered lists
-  const filteredCareers = useMemo(() => {
-    return careers.filter(c => {
-      const matchesSearch = 
-        c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        c.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        c.phone.includes(searchQuery) ||
-        (c.institute_university && c.institute_university.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        (c.city && c.city.toLowerCase().includes(searchQuery.toLowerCase()));
-      const matchesDomain = selectedDomain === 'All' || c.domain === selectedDomain;
-      const matchesDate = isWithinDateFilter(c.createdAt);
-      return matchesSearch && matchesDomain && matchesDate;
-    });
-  }, [careers, searchQuery, selectedDomain, dateFilter, customDate]);
-
-  const filteredContacts = useMemo(() => {
-    return contacts.filter(c => {
-      const matchesSearch = 
-        c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        c.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        c.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        c.message.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesDate = isWithinDateFilter(c.createdAt);
-      return matchesSearch && matchesDate;
-    });
-  }, [contacts, searchQuery, dateFilter, customDate]);
-
-  const filteredAppointments = useMemo(() => {
-    return appointments.filter(a => {
-      const matchesSearch = 
-        a.client_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        a.client_email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        a.appointment_date.includes(searchQuery) ||
-        a.service_type.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesDate = isWithinDateFilter(a.bookedAt || a.appointment_date);
-      return matchesSearch && matchesDate;
-    });
-  }, [appointments, searchQuery, dateFilter, customDate]);
-
-  // Current active data & pagination slices
-  const currentList = activeTab === 'careers' ? filteredCareers : activeTab === 'contacts' ? filteredContacts : filteredAppointments;
-  const totalItems = currentList.length;
-  const totalPages = Math.ceil(totalItems / pageSize) || 1;
-  const paginatedList = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return currentList.slice(start, start + pageSize);
-  }, [currentList, currentPage, pageSize]);
-
   // ==========================================
-  // RENDER: LOGIN SCREEN IF NOT AUTHENTICATED
+  // RENDER: LOGIN GATEWAY
   // ==========================================
   if (!isAuthenticated) {
     return (
@@ -336,7 +575,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                 <KeyRound size={12} className="text-blue-500" /> Master Key
               </label>
               <input 
-                type="password"
+                type="password" 
                 required
                 autoFocus
                 value={adminKeyInput}
@@ -379,11 +618,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   }
 
   // ==========================================
-  // RENDER: MAIN ADMIN DASHBOARD (AUTHENTICATED)
+  // RENDER: MAIN ADMIN DASHBOARD
   // ==========================================
   return (
     <div className="min-h-screen bg-[#06080e] text-white p-4 sm:p-8 font-sans">
       <div className="max-w-7xl mx-auto space-y-6">
+        
         {/* Top Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-white/10">
           <div className="flex items-center gap-4">
@@ -396,20 +636,27 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
             <div>
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-xl bg-white border border-white/20 flex items-center justify-center p-0.5 shadow-md overflow-hidden">
-                  <img src="/logo.png" alt="Future Bound Tech Logo" className="w-full h-full object-contain scale-105" />
+                  <img src="/logo.png" alt="Logo" className="w-full h-full object-contain scale-105" />
                 </div>
                 <h1 className="text-2xl font-black tracking-tight">{COMPANY_NAME} • Management Console</h1>
               </div>
-              <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-2">
+              <p className="text-xs text-gray-400 mt-0.5 flex flex-wrap items-center gap-2">
                 <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                MongoDB Live Database: <code className="text-blue-400 font-mono text-[11px]">fbt_portfolio</code>
+                <span>Hostinger Mail: <strong className="text-emerald-400">info@futureboundtech.online</strong></span>
                 <span>•</span>
-                <span>AI Failover: <strong className="text-emerald-400">OpenRouter & Groq</strong></span>
+                <span>AI Failover: <strong className="text-blue-400">OpenRouter & Groq</strong></span>
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              onClick={() => setIsCreateJobOpen(true)}
+              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:opacity-90 transition-all text-xs font-bold flex items-center gap-2 shadow-lg shadow-blue-500/25"
+            >
+              <PlusCircle size={15} /> Upload Opportunity (Job / Internship)
+            </button>
+
             <button 
               onClick={fetchData} 
               disabled={loading}
@@ -417,16 +664,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
             >
               <RefreshCw size={14} className={loading ? 'animate-spin text-blue-400' : ''} /> Refresh
             </button>
+
             <button 
-              onClick={exportToCSV}
-              className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 transition-all text-xs font-bold flex items-center gap-2 shadow-lg shadow-blue-500/20"
+              onClick={exportAppsCSV}
+              className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 transition-all text-xs font-bold flex items-center gap-2 shadow-lg shadow-emerald-500/20"
             >
               <Download size={14} /> Export CSV
             </button>
+
             <button 
               onClick={handleLogout}
               className="px-4 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 text-red-400 transition-all text-xs font-bold flex items-center gap-1.5"
-              title="Logout from Admin"
             >
               <LogOut size={14} /> Logout
             </button>
@@ -435,554 +683,918 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
 
         {/* Notification Toast */}
         {notification && (
-          <div className="p-3 bg-blue-500/20 border border-blue-500/40 rounded-xl text-blue-300 text-xs flex items-center gap-2 animate-in fade-in">
+          <div className="p-3.5 bg-blue-500/20 border border-blue-500/40 rounded-xl text-blue-300 text-xs flex items-center gap-2 animate-in fade-in">
             <CheckCircle2 size={16} /> {notification}
           </div>
         )}
 
-        {/* Top 3 Interactive Feature Summary Cards (Serve as primary Tab Switchers) */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {/* Top Metric Cards / Primary Tab Switchers */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          
+          {/* Card 1: Job Applications (Workday-style) */}
           <div 
-            onClick={() => setActiveTab('careers')}
-            className={`p-6 rounded-[2rem] border transition-all cursor-pointer relative overflow-hidden ${
-              activeTab === 'careers' 
-                ? 'bg-blue-600/15 border-blue-500 shadow-[0_0_30px_rgba(59,130,246,0.25)] scale-[1.01]' 
+            onClick={() => setActiveTab('jobApplications')}
+            className={`p-4 rounded-2xl border transition-all cursor-pointer relative overflow-hidden ${
+              activeTab === 'jobApplications' 
+                ? 'bg-blue-600/15 border-blue-500 shadow-[0_0_30px_rgba(59,130,246,0.25)]' 
                 : 'bg-white/[0.02] border-white/5 hover:border-white/20'
             }`}
           >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-widest text-gray-400">Career Applications</span>
-              <div className="p-2.5 rounded-2xl bg-blue-500/20 text-blue-400"><Briefcase size={22} /></div>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Applications</span>
+              <div className="p-1.5 rounded-xl bg-blue-500/20 text-blue-400"><Layers size={16} /></div>
             </div>
-            <div className="text-3xl font-black mt-4 text-white">{careers.length}</div>
-            <p className="text-[11px] text-gray-500 mt-1">Candidates in MongoDB & AI auto-replies</p>
-            {activeTab === 'careers' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-blue-500"></div>}
+            <div className="text-2xl font-black mt-2 text-white">{jobApplications.length}</div>
+            <p className="text-[10px] text-gray-500 mt-0.5">Workday 3-Stage</p>
+            {activeTab === 'jobApplications' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-blue-500"></div>}
           </div>
 
+          {/* Card 2: Posted Opportunities */}
+          <div 
+            onClick={() => setActiveTab('postJobs')}
+            className={`p-4 rounded-2xl border transition-all cursor-pointer relative overflow-hidden ${
+              activeTab === 'postJobs' 
+                ? 'bg-purple-600/15 border-purple-500 shadow-[0_0_30px_rgba(168,85,247,0.25)]' 
+                : 'bg-white/[0.02] border-white/5 hover:border-white/20'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Openings</span>
+              <div className="p-1.5 rounded-xl bg-purple-500/20 text-purple-400"><Briefcase size={16} /></div>
+            </div>
+            <div className="text-2xl font-black mt-2 text-white">{jobs.length}</div>
+            <p className="text-[10px] text-gray-500 mt-0.5">Jobs & Internships</p>
+            {activeTab === 'postJobs' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-purple-500"></div>}
+          </div>
+
+          {/* Card 3: Verified Offers */}
+          <div 
+            onClick={() => setActiveTab('verifiedOffers')}
+            className={`p-4 rounded-2xl border transition-all cursor-pointer relative overflow-hidden ${
+              activeTab === 'verifiedOffers' 
+                ? 'bg-emerald-600/15 border-emerald-500 shadow-[0_0_30px_rgba(16,185,129,0.25)]' 
+                : 'bg-white/[0.02] border-white/5 hover:border-white/20'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Offers</span>
+              <div className="p-1.5 rounded-xl bg-emerald-500/20 text-emerald-400"><Award size={16} /></div>
+            </div>
+            <div className="text-2xl font-black mt-2 text-white">{verifiedOffers.length}</div>
+            <p className="text-[10px] text-gray-500 mt-0.5">Verified IDs</p>
+            {activeTab === 'verifiedOffers' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-emerald-500"></div>}
+          </div>
+
+          {/* Card 4: General Careers */}
+          <div 
+            onClick={() => setActiveTab('legacyCareers')}
+            className={`p-4 rounded-2xl border transition-all cursor-pointer relative overflow-hidden ${
+              activeTab === 'legacyCareers' 
+                ? 'bg-amber-600/15 border-amber-500 shadow-[0_0_30px_rgba(245,158,11,0.25)]' 
+                : 'bg-white/[0.02] border-white/5 hover:border-white/20'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">General</span>
+              <div className="p-1.5 rounded-xl bg-amber-500/20 text-amber-400"><GraduationCap size={16} /></div>
+            </div>
+            <div className="text-2xl font-black mt-2 text-white">{legacyCareers.length}</div>
+            <p className="text-[10px] text-gray-500 mt-0.5">Spontaneous</p>
+            {activeTab === 'legacyCareers' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-amber-500"></div>}
+          </div>
+
+          {/* Card 5: Contacts */}
           <div 
             onClick={() => setActiveTab('contacts')}
-            className={`p-6 rounded-[2rem] border transition-all cursor-pointer relative overflow-hidden ${
+            className={`p-4 rounded-2xl border transition-all cursor-pointer relative overflow-hidden ${
               activeTab === 'contacts' 
-                ? 'bg-purple-600/15 border-purple-500 shadow-[0_0_30px_rgba(168,85,247,0.25)] scale-[1.01]' 
+                ? 'bg-cyan-600/15 border-cyan-500 shadow-[0_0_30px_rgba(6,182,212,0.25)]' 
                 : 'bg-white/[0.02] border-white/5 hover:border-white/20'
             }`}
           >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-widest text-gray-400">Contact Inquiries</span>
-              <div className="p-2.5 rounded-2xl bg-purple-500/20 text-purple-400"><Mail size={22} /></div>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Contacts</span>
+              <div className="p-1.5 rounded-xl bg-cyan-500/20 text-cyan-400"><Mail size={16} /></div>
             </div>
-            <div className="text-3xl font-black mt-4 text-white">{contacts.length}</div>
-            <p className="text-[11px] text-gray-500 mt-1">Client leads & AI dispatched emails</p>
-            {activeTab === 'contacts' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-purple-500"></div>}
+            <div className="text-2xl font-black mt-2 text-white">{contacts.length}</div>
+            <p className="text-[10px] text-gray-500 mt-0.5">Inquiries</p>
+            {activeTab === 'contacts' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-cyan-500"></div>}
           </div>
 
+          {/* Card 6: Appointments */}
           <div 
             onClick={() => setActiveTab('appointments')}
-            className={`p-6 rounded-[2rem] border transition-all cursor-pointer relative overflow-hidden ${
+            className={`p-4 rounded-2xl border transition-all cursor-pointer relative overflow-hidden ${
               activeTab === 'appointments' 
-                ? 'bg-emerald-600/15 border-emerald-500 shadow-[0_0_30px_rgba(16,185,129,0.25)] scale-[1.01]' 
+                ? 'bg-rose-600/15 border-rose-500 shadow-[0_0_30px_rgba(244,63,94,0.25)]' 
                 : 'bg-white/[0.02] border-white/5 hover:border-white/20'
             }`}
           >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-widest text-gray-400">Consultation Bookings</span>
-              <div className="p-2.5 rounded-2xl bg-emerald-500/20 text-emerald-400"><Calendar size={22} /></div>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Bookings</span>
+              <div className="p-1.5 rounded-xl bg-rose-500/20 text-rose-400"><Calendar size={16} /></div>
             </div>
-            <div className="text-3xl font-black mt-4 text-white">{appointments.length}</div>
-            <p className="text-[11px] text-gray-500 mt-1">Corporate slots with Meet Room link</p>
-            {activeTab === 'appointments' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-emerald-500"></div>}
+            <div className="text-2xl font-black mt-2 text-white">{appointments.length}</div>
+            <p className="text-[10px] text-gray-500 mt-0.5">Consultations</p>
+            {activeTab === 'appointments' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-rose-500"></div>}
           </div>
         </div>
 
-        {/* Filter & View Control Bar */}
-        <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 flex flex-wrap gap-3 items-center justify-between">
-          {/* View Mode Toggle & Active Tab Indicator */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider mr-2 hidden sm:inline">
-              Viewing: <strong className="text-white capitalize">{activeTab}</strong> ({totalItems})
-            </span>
-
-            <div className="flex items-center bg-black/40 p-1 rounded-xl border border-white/10">
-              <button
-                onClick={() => setViewMode('cards')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                  viewMode === 'cards' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-400 hover:text-white'
-                }`}
-                title="Block / Card View"
-              >
-                <LayoutGrid size={14} /> Block View
-              </button>
-              <button
-                onClick={() => setViewMode('table')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                  viewMode === 'table' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-400 hover:text-white'
-                }`}
-                title="Tabular View (for 10,000+ records)"
-              >
-                <TableIcon size={14} /> Tabular View
-              </button>
-            </div>
-          </div>
-
-          {/* Search, Domain, and Date Filters */}
-          <div className="flex flex-wrap items-center gap-2.5">
-            {/* Date Filter Dropdown */}
-            <div className="flex items-center gap-1.5">
-              <CalendarDays size={14} className="text-gray-400" />
-              <select
-                value={dateFilter}
-                onChange={(e) => setDateFilter(e.target.value as any)}
-                className="bg-[#111624] border border-white/10 rounded-xl px-3 py-2 text-xs font-semibold text-gray-300 outline-none focus:border-blue-500"
-              >
-                <option value="all">All Dates</option>
-                <option value="today">Today</option>
-                <option value="7days">Last 7 Days</option>
-                <option value="30days">Last 30 Days</option>
-                <option value="custom">Custom Date</option>
-              </select>
-
-              {dateFilter === 'custom' && (
+        {/* ==========================================
+            TAB 1: JOB APPLICATIONS (3-STAGE WORKDAY)
+        ========================================== */}
+        {activeTab === 'jobApplications' && (
+          <div className="space-y-4 animate-in fade-in duration-200">
+            {/* Filter Bar */}
+            <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 flex flex-wrap items-center justify-between gap-3">
+              {/* Search */}
+              <div className="relative flex-1 min-w-[200px]">
+                <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
                 <input 
-                  type="date"
-                  value={customDate}
-                  onChange={(e) => setCustomDate(e.target.value)}
-                  className="bg-[#111624] border border-white/10 rounded-xl px-2.5 py-1.5 text-xs text-white outline-none focus:border-blue-500"
+                  type="text"
+                  placeholder="Search candidate, email, college, ID..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full bg-white/[0.04] border border-white/10 rounded-xl pl-9 pr-4 py-2 text-xs text-white placeholder-gray-500 outline-none focus:border-blue-500"
                 />
-              )}
+              </div>
+
+              {/* Filter by Job */}
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-gray-500 font-bold uppercase">Job / Intern:</span>
+                <select
+                  value={selectedJobFilter}
+                  onChange={(e) => setSelectedJobFilter(e.target.value)}
+                  className="bg-[#111624] border border-white/10 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-blue-500"
+                >
+                  <option value="All">All Postings ({jobs.length})</option>
+                  {jobs.map(j => (
+                    <option key={j.jobId} value={j.jobId}>{j.jobId} - {j.title}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Filter by Status */}
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-gray-500 font-bold uppercase">Status:</span>
+                <select
+                  value={selectedStatusFilter}
+                  onChange={(e) => setSelectedStatusFilter(e.target.value)}
+                  className="bg-[#111624] border border-white/10 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-blue-500"
+                >
+                  <option value="All">All Statuses</option>
+                  <option value="Applied">Applied</option>
+                  <option value="Shortlisted">Shortlisted</option>
+                  <option value="Interview Scheduled">Interview Scheduled</option>
+                  <option value="Hired">Hired</option>
+                  <option value="Dropped">Dropped</option>
+                </select>
+              </div>
             </div>
 
-            {/* Domain Filter (Careers Only) */}
-            {activeTab === 'careers' && (
-              <select
-                value={selectedDomain}
-                onChange={(e) => setSelectedDomain(e.target.value)}
-                className="bg-[#111624] border border-white/10 rounded-xl px-3 py-2 text-xs font-semibold text-gray-300 outline-none focus:border-blue-500"
-              >
-                <option value="All">All Domains</option>
-                <option value="Full Stack Development">Full Stack</option>
-                <option value="Backend Development">Backend</option>
-                <option value="Artificial Intelligence (AI)">AI</option>
-                <option value="Data Analyst">Data Analyst</option>
-                <option value="SAP">SAP</option>
-                <option value="Other IT Domains">Other IT</option>
-              </select>
-            )}
+            {/* Applications Table */}
+            <div className="rounded-2xl bg-white/[0.02] border border-white/10 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-white/[0.04] text-gray-400 font-bold uppercase tracking-wider text-[10px] border-b border-white/10">
+                    <tr>
+                      <th className="py-3 px-4">Candidate & App ID</th>
+                      <th className="py-3 px-4">Role & Job ID</th>
+                      <th className="py-3 px-4">Education & Score</th>
+                      <th className="py-3 px-4">Location</th>
+                      <th className="py-3 px-4">Status</th>
+                      <th className="py-3 px-4">Resume</th>
+                      <th className="py-3 px-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {filteredJobApps.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="py-10 text-center text-gray-500">
+                          No candidate applications matching active filter.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredJobApps.map(app => (
+                        <tr key={app._id} className="hover:bg-white/[0.02] transition-colors">
+                          <td className="py-3.5 px-4">
+                            <div className="font-bold text-white text-sm">{app.name}</div>
+                            <div className="text-gray-400 font-mono text-[11px]">{app.applicationId}</div>
+                            <div className="text-gray-500 text-[10px]">{app.email} • {app.phone}</div>
+                          </td>
 
-            {/* Search Input */}
-            <div className="relative w-48 sm:w-60">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-              <input
-                type="text"
-                placeholder="Search records..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-3 py-2 text-xs outline-none focus:border-blue-500 text-white placeholder-gray-500"
-              />
+                          <td className="py-3.5 px-4">
+                            <span className="font-bold text-white block">{app.jobTitle}</span>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded border ${
+                                app.jobType === 'Internship' ? 'bg-purple-500/20 text-purple-300 border-purple-500/30' : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                              }`}>
+                                {app.jobType}
+                              </span>
+                              <span className="font-mono text-gray-400 text-[10px]">{app.jobId}</span>
+                            </div>
+                          </td>
+
+                          <td className="py-3.5 px-4">
+                            <div className="text-gray-300 font-semibold">{app.highestQualification}</div>
+                            <div className="text-gray-400 text-[11px] truncate max-w-[200px]">{app.collegeName}</div>
+                            <div className="text-emerald-400 font-mono text-[10px]">Score: {app.score} ({app.yearOfCompletion})</div>
+                          </td>
+
+                          <td className="py-3.5 px-4 text-gray-300">
+                            {app.location || 'N/A'}
+                          </td>
+
+                          <td className="py-3.5 px-4">
+                            <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border inline-block ${
+                              app.status === 'Hired' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' :
+                              app.status === 'Interview Scheduled' ? 'bg-blue-500/20 text-blue-300 border-blue-500/40' :
+                              app.status === 'Shortlisted' ? 'bg-purple-500/20 text-purple-300 border-purple-500/40' :
+                              app.status === 'Dropped' ? 'bg-red-500/20 text-red-300 border-red-500/40' :
+                              'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                            }`}>
+                              {app.status}
+                            </span>
+                            {app.offerDetails?.offerId && (
+                              <div className="text-[10px] font-mono text-emerald-400 mt-1">
+                                {app.offerDetails.offerId}
+                              </div>
+                            )}
+                          </td>
+
+                          <td className="py-3.5 px-4">
+                            {app.resumeUrl ? (
+                              <a 
+                                href={app.resumeUrl} 
+                                target="_blank" 
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 text-blue-400 hover:text-blue-300 font-semibold text-xs underline"
+                              >
+                                <FileText size={13} /> View CV
+                              </a>
+                            ) : (
+                              <span className="text-gray-600">No file</span>
+                            )}
+                          </td>
+
+                          <td className="py-3.5 px-4 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => handleOpenAppDetail(app)}
+                                className="px-3 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/40 text-blue-300 border border-blue-500/30 text-xs font-bold flex items-center gap-1 transition-all"
+                              >
+                                <Eye size={12} /> Process
+                              </button>
+                              <button
+                                onClick={() => deleteJobApp(app._id)}
+                                className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-all"
+                                title="Delete"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
-        {/* Content Area */}
-        <div className="space-y-4">
-          {totalItems === 0 ? (
-            <div className="text-center py-24 bg-white/[0.01] rounded-3xl border border-white/5 text-gray-500">
-              <Filter size={36} className="mx-auto mb-3 opacity-30" />
-              <p className="font-semibold text-sm">No matching records found</p>
-              <p className="text-xs mt-1">Try adjusting your search query, domain, or date filter.</p>
+        {/* ==========================================
+            TAB 2: UPLOAD & MANAGE OPPORTUNITIES
+        ========================================== */}
+        {activeTab === 'postJobs' && (
+          <div className="space-y-6 animate-in fade-in duration-200">
+            <div className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-2xl bg-white/[0.03] border border-white/10">
+              <div>
+                <h3 className="text-lg font-bold text-white">Active Postings on Careers Portal</h3>
+                <p className="text-xs text-gray-400">Candidates apply directly to these unique Job IDs through the 3-stage Workday flow</p>
+              </div>
+              <button
+                onClick={() => setIsCreateJobOpen(true)}
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-blue-500/20"
+              >
+                <PlusCircle size={15} /> Upload Opportunity
+              </button>
             </div>
-          ) : (
-            <>
-              {/* ========================================================= */}
-              {/* 1. TABULAR VIEW (High Scalability / Density)             */}
-              {/* ========================================================= */}
-              {viewMode === 'table' ? (
-                <div className="rounded-3xl border border-white/10 bg-white/[0.01] overflow-hidden shadow-2xl">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs text-gray-300 border-collapse">
-                      <thead className="bg-[#0e1424] text-gray-400 font-bold uppercase tracking-wider text-xs border-b border-white/10">
-                        {activeTab === 'careers' && (
-                          <tr>
-                            <th className="py-3.5 px-4">Candidate</th>
-                            <th className="py-3.5 px-4">Contact</th>
-                            <th className="py-3.5 px-4">Domain</th>
-                            <th className="py-3.5 px-4">Qualification & University</th>
-                            <th className="py-3.5 px-4">Location</th>
-                            <th className="py-3.5 px-4">Resume</th>
-                            <th className="py-3.5 px-4">Date</th>
-                            <th className="py-3.5 px-4 text-right">Actions</th>
-                          </tr>
-                        )}
-                        {activeTab === 'contacts' && (
-                          <tr>
-                            <th className="py-3.5 px-4">Sender</th>
-                            <th className="py-3.5 px-4">Email</th>
-                            <th className="py-3.5 px-4">Subject</th>
-                            <th className="py-3.5 px-4">Message Snippet</th>
-                            <th className="py-3.5 px-4">Date</th>
-                            <th className="py-3.5 px-4 text-right">Actions</th>
-                          </tr>
-                        )}
-                        {activeTab === 'appointments' && (
-                          <tr>
-                            <th className="py-3.5 px-4">Client</th>
-                            <th className="py-3.5 px-4">Email</th>
-                            <th className="py-3.5 px-4">Service Domain</th>
-                            <th className="py-3.5 px-4">Date & Slot</th>
-                            <th className="py-3.5 px-4">Meet Room</th>
-                            <th className="py-3.5 px-4 text-right">Actions</th>
-                          </tr>
-                        )}
-                      </thead>
 
-                      <tbody className="divide-y divide-white/5">
-                        {activeTab === 'careers' && (paginatedList as CareerApp[]).map((c) => (
-                          <tr key={c._id} className="hover:bg-white/[0.03] transition-colors">
-                            <td className="py-3 px-4 font-bold text-white whitespace-nowrap">{c.name}</td>
-                            <td className="py-3 px-4 whitespace-nowrap">
-                              <div className="font-mono text-xs text-blue-400">{c.email}</div>
-                              <div className="text-xs text-gray-500">{c.phone}</div>
-                            </td>
-                            <td className="py-3 px-4 whitespace-nowrap">
-                              <span className="px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 text-xs font-bold">
-                                {c.domain}
-                              </span>
-                            </td>
-                            <td className="py-3 px-4">
-                              <div className="text-white font-semibold text-xs">{c.qualification || 'N/A'}</div>
-                              <div className="text-xs text-gray-500 truncate max-w-[180px]">{c.institute_university || 'N/A'}</div>
-                            </td>
-                            <td className="py-3 px-4 whitespace-nowrap text-xs">{c.city ? `${c.city}, ${c.state}` : c.state || 'India'}</td>
-                            <td className="py-3 px-4 whitespace-nowrap">
-                              {c.resumeUrl ? (
-                                <a 
-                                  href={c.resumeUrl} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-semibold hover:bg-emerald-500/20 transition-all"
-                                  title="View Uploaded Resume"
-                                >
-                                  <Download size={12} /> Resume
-                                </a>
-                              ) : (
-                                <span className="text-xs text-gray-500">None</span>
-                              )}
-                            </td>
-                            <td className="py-3 px-4 whitespace-nowrap text-xs text-gray-500">
-                              {new Date(c.createdAt).toLocaleDateString()}
-                            </td>
-                            <td className="py-3 px-4 text-right whitespace-nowrap">
-                              <div className="flex items-center justify-end gap-2">
-                                <a 
-                                  href={`mailto:${c.email}?subject=Future%20Bound%20Tech%20Career%20Interaction`}
-                                  className="p-1.5 rounded-lg bg-blue-500/10 text-blue-400 hover:bg-blue-500/20"
-                                  title="Email Candidate"
-                                >
-                                  <Mail size={14} />
-                                </a>
-                                <button
-                                  onClick={() => deleteRecord('careers', c._id)}
-                                  className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20"
-                                  title="Delete Record"
-                                >
-                                  <Trash2 size={14} />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
+            {jobs.length === 0 ? (
+              <div className="p-12 text-center rounded-3xl bg-white/[0.02] border border-white/10 space-y-4">
+                <Briefcase size={40} className="mx-auto text-gray-500" />
+                <h4 className="text-lg font-bold text-white">No Opportunities Uploaded Yet</h4>
+                <p className="text-xs text-gray-400 max-w-sm mx-auto">Create a Job or Internship opening with AI-generated descriptions and custom duration.</p>
+                <button
+                  onClick={() => setIsCreateJobOpen(true)}
+                  className="px-6 py-3 rounded-xl bg-blue-600 text-white font-bold text-xs"
+                >
+                  Create First Opportunity
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                {jobs.map(job => (
+                  <div key={job._id || job.jobId} className="p-5 rounded-2xl bg-white/[0.02] border border-white/10 space-y-4 flex flex-col justify-between">
+                    <div className="space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded border ${
+                          job.type === 'Internship' ? 'bg-purple-500/20 text-purple-300 border-purple-500/40' : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                        }`}>
+                          {job.type}
+                        </span>
+                        <span className="font-mono text-xs text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20">
+                          {job.jobId}
+                        </span>
+                      </div>
 
-                        {activeTab === 'contacts' && (paginatedList as ContactInquiry[]).map((con) => (
-                          <tr key={con._id} className="hover:bg-white/[0.03] transition-colors">
-                            <td className="py-3 px-4 font-bold text-white whitespace-nowrap">{con.name}</td>
-                            <td className="py-3 px-4 whitespace-nowrap font-mono text-[11px] text-purple-400">{con.email}</td>
-                            <td className="py-3 px-4 whitespace-nowrap font-bold text-gray-200">{con.subject}</td>
-                            <td className="py-3 px-4 text-gray-400 max-w-[250px] truncate">{con.message}</td>
-                            <td className="py-3 px-4 whitespace-nowrap text-[11px] text-gray-500">
-                              {new Date(con.createdAt).toLocaleDateString()}
-                            </td>
-                            <td className="py-3 px-4 text-right whitespace-nowrap">
-                              <div className="flex items-center justify-end gap-2">
-                                <a 
-                                  href={`mailto:${con.email}?subject=Re:%20${encodeURIComponent(con.subject)}`}
-                                  className="p-1.5 rounded-lg bg-purple-500/10 text-purple-400 hover:bg-purple-500/20"
-                                  title="Reply"
-                                >
-                                  <Mail size={14} />
-                                </a>
-                                <button
-                                  onClick={() => deleteRecord('contacts', con._id)}
-                                  className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20"
-                                  title="Delete Record"
-                                >
-                                  <Trash2 size={14} />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
+                      <h4 className="text-base font-bold text-white">{job.title}</h4>
 
-                        {activeTab === 'appointments' && (paginatedList as AppointmentBooking[]).map((a) => (
-                          <tr key={a._id} className="hover:bg-white/[0.03] transition-colors">
-                            <td className="py-3 px-4 font-bold text-white whitespace-nowrap">{a.client_name}</td>
-                            <td className="py-3 px-4 whitespace-nowrap font-mono text-[11px] text-emerald-400">{a.client_email}</td>
-                            <td className="py-3 px-4 whitespace-nowrap font-semibold text-gray-200">{a.service_type}</td>
-                            <td className="py-3 px-4 whitespace-nowrap">
-                              <div className="font-bold text-white">{a.appointment_date}</div>
-                              <div className="text-[10px] text-emerald-400 font-mono">{a.appointment_time}</div>
-                            </td>
-                            <td className="py-3 px-4 whitespace-nowrap font-mono text-[11px]">
-                              <a href={a.meet_link || 'https://meet.google.com/koi-medw-gni'} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline flex items-center gap-1">
-                                <Video size={12} /> Open Room
-                              </a>
-                            </td>
-                            <td className="py-3 px-4 text-right whitespace-nowrap">
-                              <button
-                                onClick={() => deleteRecord('appointments', a._id)}
-                                className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20"
-                                title="Cancel / Delete Booking"
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                      <div className="text-xs text-gray-400 space-y-1">
+                        <div>📍 Mode: <strong className="text-white">{job.workMode}</strong> {job.location ? `(${job.location})` : ''}</div>
+                        <div>⏰ Duration: <strong className="text-white">{job.duration}</strong></div>
+                        <div>👥 Applicants: <strong className="text-emerald-400">{job.applicationsCount || 0}</strong></div>
+                      </div>
+
+                      <p className="text-xs text-gray-400 line-clamp-3 pt-1">
+                        {(job.description || '').replace(/[#*`_]/g, '')}
+                      </p>
+                    </div>
+
+                    <div className="pt-3 border-t border-white/10 flex items-center justify-between">
+                      <button
+                        onClick={() => toggleJobStatus(job)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${
+                          job.status === 'Active' 
+                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' 
+                            : 'bg-gray-500/10 text-gray-400 border-gray-500/30'
+                        }`}
+                      >
+                        {job.status === 'Active' ? '● Active (Live)' : '○ Closed'}
+                      </button>
+
+                      <button
+                        onClick={() => job._id && deleteJob(job._id)}
+                        className="p-1.5 rounded-lg bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20"
+                        title="Delete Opportunity"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ==========================================
+            TAB 3: VERIFIED OFFERS DIRECTORY
+        ========================================== */}
+        {activeTab === 'verifiedOffers' && (
+          <div className="space-y-4 animate-in fade-in duration-200">
+            <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-white">Verified Offer Letters & Certificate Directory</h3>
+                <p className="text-xs text-gray-400">Every candidate marked as "Hired" receives an official Offer ID verifiable online</p>
+              </div>
+            </div>
+
+            <div className="rounded-2xl bg-white/[0.02] border border-white/10 overflow-hidden">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-white/[0.04] text-gray-400 font-bold uppercase tracking-wider text-[10px] border-b border-white/10">
+                  <tr>
+                    <th className="py-3 px-4">Offer ID</th>
+                    <th className="py-3 px-4">Candidate Name</th>
+                    <th className="py-3 px-4">Role & Type</th>
+                    <th className="py-3 px-4">Joining Date</th>
+                    <th className="py-3 px-4">Issue Date</th>
+                    <th className="py-3 px-4">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {verifiedOffers.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="py-10 text-center text-gray-500">
+                        No official Offer Letters issued yet. When a candidate is marked as "Hired", an Offer ID is generated here.
+                      </td>
+                    </tr>
+                  ) : (
+                    verifiedOffers.map((off, idx) => (
+                      <tr key={idx} className="hover:bg-white/[0.02]">
+                        <td className="py-3.5 px-4 font-mono font-bold text-emerald-400 text-sm">
+                          {off.offerId}
+                        </td>
+                        <td className="py-3.5 px-4 text-white font-semibold">
+                          {off.candidateName}
+                          <div className="text-[10px] text-gray-500">{off.candidateEmail}</div>
+                        </td>
+                        <td className="py-3.5 px-4 text-gray-300">
+                          {off.jobTitle} ({off.jobType})
+                        </td>
+                        <td className="py-3.5 px-4 text-blue-300">
+                          {off.joiningDate || 'Immediate'}
+                        </td>
+                        <td className="py-3.5 px-4 text-gray-400">
+                          {off.issuedAt ? new Date(off.issuedAt).toLocaleDateString() : 'N/A'}
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                            Verified & Active
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* ==========================================
+            TAB 4: LEGACY GENERAL CAREERS
+        ========================================== */}
+        {activeTab === 'legacyCareers' && (
+          <div className="rounded-2xl bg-white/[0.02] border border-white/10 overflow-hidden">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-white/[0.04] text-gray-400 font-bold uppercase tracking-wider text-[10px] border-b border-white/10">
+                <tr>
+                  <th className="py-3 px-4">Candidate</th>
+                  <th className="py-3 px-4">Domain</th>
+                  <th className="py-3 px-4">Education</th>
+                  <th className="py-3 px-4">Location</th>
+                  <th className="py-3 px-4">Resume</th>
+                  <th className="py-3 px-4">Submitted</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {legacyCareers.map(c => (
+                  <tr key={c._id} className="hover:bg-white/[0.02]">
+                    <td className="py-3.5 px-4 text-white font-bold">{c.name}<div className="text-gray-500 text-[10px]">{c.email} • {c.phone}</div></td>
+                    <td className="py-3.5 px-4 text-emerald-400 font-semibold">{c.domain}</td>
+                    <td className="py-3.5 px-4 text-gray-300">{c.qualification}<div className="text-gray-500 text-[10px]">{c.institute_university}</div></td>
+                    <td className="py-3.5 px-4 text-gray-400">{c.city ? `${c.city}, ${c.state}` : c.state || 'N/A'}</td>
+                    <td className="py-3.5 px-4">{c.resumeUrl ? <a href={c.resumeUrl} target="_blank" className="text-blue-400 underline">View CV</a> : 'None'}</td>
+                    <td className="py-3.5 px-4 text-gray-500">{new Date(c.createdAt).toLocaleDateString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* ==========================================
+            TAB 5: CONTACTS
+        ========================================== */}
+        {activeTab === 'contacts' && (
+          <div className="rounded-2xl bg-white/[0.02] border border-white/10 overflow-hidden">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-white/[0.04] text-gray-400 font-bold uppercase tracking-wider text-[10px] border-b border-white/10">
+                <tr>
+                  <th className="py-3 px-4">Client Name</th>
+                  <th className="py-3 px-4">Subject</th>
+                  <th className="py-3 px-4">Message</th>
+                  <th className="py-3 px-4">Date</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {contacts.map(c => (
+                  <tr key={c._id} className="hover:bg-white/[0.02]">
+                    <td className="py-3.5 px-4 text-white font-bold">{c.name}<div className="text-gray-500 text-[10px]">{c.email}</div></td>
+                    <td className="py-3.5 px-4 text-purple-400 font-semibold">{c.subject}</td>
+                    <td className="py-3.5 px-4 text-gray-300 max-w-md">{c.message}</td>
+                    <td className="py-3.5 px-4 text-gray-500">{new Date(c.createdAt).toLocaleDateString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* ==========================================
+            TAB 6: APPOINTMENTS
+        ========================================== */}
+        {activeTab === 'appointments' && (
+          <div className="rounded-2xl bg-white/[0.02] border border-white/10 overflow-hidden">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-white/[0.04] text-gray-400 font-bold uppercase tracking-wider text-[10px] border-b border-white/10">
+                <tr>
+                  <th className="py-3 px-4">Client</th>
+                  <th className="py-3 px-4">Service</th>
+                  <th className="py-3 px-4">Date & Slot</th>
+                  <th className="py-3 px-4">Meet Room</th>
+                  <th className="py-3 px-4">Booked</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {appointments.map(a => (
+                  <tr key={a._id} className="hover:bg-white/[0.02]">
+                    <td className="py-3.5 px-4 text-white font-bold">{a.client_name}<div className="text-gray-500 text-[10px]">{a.client_email}</div></td>
+                    <td className="py-3.5 px-4 text-emerald-400 font-semibold">{a.service_type}</td>
+                    <td className="py-3.5 px-4 text-blue-300 font-bold">{a.appointment_date} ({a.appointment_time})</td>
+                    <td className="py-3.5 px-4"><a href={a.meet_link || STATIC_MEET_LINK} target="_blank" className="text-blue-400 underline">Join Meet</a></td>
+                    <td className="py-3.5 px-4 text-gray-500">{new Date(a.bookedAt).toLocaleDateString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* ==========================================
+            MODAL: CREATE / UPLOAD OPPORTUNITY
+        ========================================== */}
+        {isCreateJobOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/80 backdrop-blur-md overflow-y-auto animate-in fade-in">
+            <div className="relative w-full max-w-2xl bg-[#0b0f19] border border-white/10 rounded-[2.5rem] p-6 sm:p-8 space-y-6 shadow-2xl my-auto">
+              <div className="flex items-center justify-between border-b border-white/10 pb-4">
+                <div>
+                  <h3 className="text-xl font-black text-white">Upload New Opportunity</h3>
+                  <p className="text-xs text-gray-400">Post a Job or Internship position to the public Careers section</p>
                 </div>
-              ) : (
-                /* ========================================================= */
-                /* 2. BLOCK / CARD VIEW                                      */
-                /* ========================================================= */
-                <div className="grid grid-cols-1 gap-4">
-                  {/* Careers Cards */}
-                  {activeTab === 'careers' && (paginatedList as CareerApp[]).map((item) => (
-                    <div 
-                      key={item._id}
-                      className="p-6 rounded-3xl bg-white/[0.02] border border-white/10 hover:border-blue-500/30 transition-all space-y-4 shadow-lg"
-                    >
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/5">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center font-bold">
-                            {item.name ? item.name.charAt(0).toUpperCase() : 'U'}
-                          </div>
-                          <div>
-                            <h3 className="font-bold text-base text-white">{item.name}</h3>
-                            <p className="text-xs text-gray-400 flex items-center gap-3 mt-0.5">
-                              <span>✉️ {item.email}</span>
-                              <span>📞 {item.phone}</span>
-                            </p>
-                          </div>
-                        </div>
+                <button onClick={() => setIsCreateJobOpen(false)} className="p-2 rounded-full bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white">
+                  <X size={18} />
+                </button>
+              </div>
 
-                        <div className="flex items-center gap-2">
-                          <span className="px-3 py-1 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 text-xs font-bold">
-                            {item.domain}
-                          </span>
-                          <button
-                            onClick={() => deleteRecord('careers', item._id)}
-                            className="p-2 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all"
-                            title="Delete Application"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                        <div className="p-3 rounded-xl bg-white/[0.02] border border-white/5">
-                          <span className="text-gray-400 text-xs uppercase font-bold tracking-wider block mb-0.5">🎓 Qualification</span>
-                          <span className="text-gray-200 font-semibold">{item.qualification || 'Not specified'}</span>
-                        </div>
-                        <div className="p-3 rounded-xl bg-white/[0.02] border border-white/5">
-                          <span className="text-gray-400 text-xs uppercase font-bold tracking-wider block mb-0.5">🏛️ University</span>
-                          <span className="text-gray-200 font-semibold truncate block">{item.institute_university || 'Not specified'}</span>
-                        </div>
-                        <div className="p-3 rounded-xl bg-white/[0.02] border border-white/5">
-                          <span className="text-gray-400 text-xs uppercase font-bold tracking-wider block mb-0.5">📍 Location</span>
-                          <span className="text-gray-200 font-semibold">{item.city ? `${item.city}, ${item.state}` : item.state || 'India'}</span>
-                        </div>
-                      </div>
-
-                      {item.resumeUrl && (
-                        <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-2 text-emerald-300 text-xs font-semibold">
-                            <CheckCircle2 size={16} className="text-emerald-400" />
-                            <span>Candidate Resume Attached</span>
-                          </div>
-                          <a 
-                            href={item.resumeUrl} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all shadow-md shadow-emerald-500/20"
-                          >
-                            <Download size={13} /> View / Download PDF
-                          </a>
-                        </div>
-                      )}
-
-                      {item.message && (
-                        <div className="p-3 rounded-xl bg-black/40 border border-white/5 text-xs text-gray-300">
-                          <span className="text-gray-500 font-bold uppercase text-[10px] block mb-1">Notes / Portfolio:</span>
-                          <p className="whitespace-pre-wrap">{item.message}</p>
-                        </div>
-                      )}
-
-                      <div className="text-[11px] text-gray-500 flex justify-between items-center pt-1">
-                        <span>Submitted: {new Date(item.createdAt).toLocaleString()}</span>
-                        <a 
-                          href={`mailto:${item.email}?subject=Future%20Bound%20Tech%20Career%20Application%20Response`} 
-                          className="text-blue-400 hover:underline flex items-center gap-1 font-semibold"
-                        >
-                          Send Email Response <ExternalLink size={12} />
-                        </a>
-                      </div>
-                    </div>
-                  ))}
-
-                  {/* Contacts Cards */}
-                  {activeTab === 'contacts' && (paginatedList as ContactInquiry[]).map((item) => (
-                    <div 
-                      key={item._id}
-                      className="p-6 rounded-3xl bg-white/[0.02] border border-white/10 hover:border-purple-500/30 transition-all space-y-3 shadow-lg"
-                    >
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-white/5">
-                        <div>
-                          <h3 className="font-bold text-base text-white">{item.name}</h3>
-                          <p className="text-xs text-purple-400 mt-0.5">✉️ {item.email} • Subject: <strong className="text-white">{item.subject}</strong></p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[11px] text-gray-500">{new Date(item.createdAt).toLocaleDateString()}</span>
-                          <button
-                            onClick={() => deleteRecord('contacts', item._id)}
-                            className="p-2 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all"
-                            title="Delete Inquiry"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="p-4 rounded-2xl bg-black/40 border border-white/5 text-xs text-gray-300 whitespace-pre-wrap leading-relaxed">
-                        {item.message}
-                      </div>
-
-                      <div className="text-right">
-                        <a 
-                          href={`mailto:${item.email}?subject=Re:%20${encodeURIComponent(item.subject)}`} 
-                          className="text-xs text-purple-400 hover:underline font-bold inline-flex items-center gap-1"
-                        >
-                          Reply to Message <ExternalLink size={12} />
-                        </a>
-                      </div>
-                    </div>
-                  ))}
-
-                  {/* Appointments Cards */}
-                  {activeTab === 'appointments' && (paginatedList as AppointmentBooking[]).map((item) => (
-                    <div 
-                      key={item._id}
-                      className="p-6 rounded-3xl bg-white/[0.02] border border-white/10 hover:border-emerald-500/30 transition-all space-y-4 shadow-lg"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
-                            {item.service_type}
-                          </span>
-                          <h3 className="font-bold text-lg text-white mt-2">{item.client_name}</h3>
-                          <p className="text-xs text-gray-400">✉️ {item.client_email}</p>
-                        </div>
-
-                        <button
-                          onClick={() => deleteRecord('appointments', item._id)}
-                          className="p-2 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all"
-                          title="Cancel/Delete Booking (Frees Slot)"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2 text-xs">
-                        <div className="p-3 rounded-xl bg-white/[0.02] border border-white/5">
-                          <span className="text-gray-500 text-[10px] uppercase font-bold block">📅 Consultation Date</span>
-                          <span className="text-white font-bold">{item.appointment_date}</span>
-                        </div>
-                        <div className="p-3 rounded-xl bg-white/[0.02] border border-white/5">
-                          <span className="text-gray-500 text-[10px] uppercase font-bold block">⏰ Time Slot</span>
-                          <span className="text-emerald-400 font-bold">{item.appointment_time}</span>
-                        </div>
-                      </div>
-
-                      <div className="p-3 rounded-xl bg-blue-600/10 border border-blue-500/20 flex items-center justify-between gap-2 text-xs">
-                        <div className="truncate text-blue-300 font-mono text-[11px] flex items-center gap-2">
-                          <Video size={14} className="text-blue-400 flex-shrink-0" />
-                          <span className="truncate">{item.meet_link || 'https://meet.google.com/koi-medw-gni'}</span>
-                        </div>
-                        <a 
-                          href={item.meet_link || 'https://meet.google.com/koi-medw-gni'} 
-                          target="_blank" 
-                          rel="noreferrer" 
-                          className="text-blue-400 hover:text-white font-bold text-xs flex-shrink-0"
-                        >
-                          Open Meet
-                        </a>
-                      </div>
-
-                      <div className="text-[10px] text-gray-500 text-right">
-                        Booked: {new Date(item.bookedAt).toLocaleString()}
-                      </div>
-                    </div>
-                  ))}
+              {jobFormError && (
+                <div className="p-3.5 rounded-xl bg-red-500/15 border border-red-500/30 text-red-300 text-xs">
+                  {jobFormError}
                 </div>
               )}
 
-              {/* Pagination Controls (Optimized for 10,000+ Records) */}
-              <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs">
-                <div className="flex items-center gap-3 text-gray-400">
-                  <span>
-                    Showing <strong className="text-white">{(currentPage - 1) * pageSize + 1}</strong> to <strong className="text-white">{Math.min(currentPage * pageSize, totalItems)}</strong> of <strong className="text-white">{totalItems}</strong> entries
-                  </span>
-                  
-                  <div className="flex items-center gap-1.5 ml-2">
-                    <span className="text-[11px]">Per Page:</span>
+              <form onSubmit={handleSaveJobPosting} className="space-y-4">
+                {/* 1. Opportunity Type Dropdown */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold uppercase tracking-widest text-gray-400">
+                      1. Opportunity Type <span className="text-red-400">*</span>
+                    </label>
                     <select
-                      value={pageSize}
-                      onChange={(e) => setPageSize(Number(e.target.value))}
-                      className="bg-[#111624] border border-white/10 rounded-lg px-2 py-1 text-xs text-white outline-none focus:border-blue-500"
+                      value={jobFormType}
+                      onChange={(e) => {
+                        const val = e.target.value as 'Job' | 'Internship';
+                        setJobFormType(val);
+                        if (val === 'Internship' && jobFormDuration === 'Full Time') {
+                          setJobFormDuration('3-6 Months');
+                        }
+                      }}
+                      className="w-full bg-[#111624] border border-white/10 rounded-xl px-4 py-3 text-white text-xs outline-none focus:border-blue-500"
                     >
-                      <option value={10}>10</option>
-                      <option value={25}>25</option>
-                      <option value={50}>50</option>
-                      <option value={100}>100</option>
+                      <option value="Job">1. Job (Full-Time / Contract)</option>
+                      <option value="Internship">2. Internship</option>
                     </select>
                   </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold uppercase tracking-widest text-gray-400">
+                      Duration <span className="text-red-400">*</span>
+                    </label>
+                    <input 
+                      type="text"
+                      required
+                      value={jobFormDuration}
+                      onChange={(e) => setJobFormDuration(e.target.value)}
+                      placeholder="e.g. 6 Months / Full Time"
+                      className="w-full bg-white/[0.04] border border-white/10 rounded-xl px-4 py-3 text-white text-xs outline-none focus:border-blue-500"
+                    />
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <button
-                    disabled={currentPage === 1}
-                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                    className="px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-white font-semibold transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1"
-                  >
-                    <ChevronLeft size={14} /> Prev
-                  </button>
+                {/* 2. Title */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold uppercase tracking-widest text-gray-400">
+                    Position Title <span className="text-red-400">*</span>
+                  </label>
+                  <input 
+                    type="text"
+                    required
+                    value={jobFormTitle}
+                    onChange={(e) => setJobFormTitle(e.target.value)}
+                    placeholder="e.g. Full Stack Developer, AI/ML Intern, React Specialist"
+                    className="w-full bg-white/[0.04] border border-white/10 rounded-xl px-4 py-3 text-white text-xs outline-none focus:border-blue-500"
+                  />
+                </div>
 
-                  <span className="px-3 py-1 rounded-xl bg-blue-600/20 text-blue-400 font-bold border border-blue-500/30">
-                    {currentPage} / {totalPages}
-                  </span>
+                {/* 3. Work Mode & Location */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold uppercase tracking-widest text-gray-400">
+                      Work Mode (Menu) <span className="text-red-400">*</span>
+                    </label>
+                    <select
+                      value={jobFormWorkMode}
+                      onChange={(e) => setJobFormWorkMode(e.target.value as any)}
+                      className="w-full bg-[#111624] border border-white/10 rounded-xl px-4 py-3 text-white text-xs outline-none focus:border-blue-500"
+                    >
+                      <option value="Remote">Remote</option>
+                      <option value="Onsite">Onsite</option>
+                      <option value="Hybrid">Hybrid</option>
+                    </select>
+                  </div>
 
+                  {(jobFormWorkMode === 'Onsite' || jobFormWorkMode === 'Hybrid') && (
+                    <div className="space-y-1.5 animate-in fade-in duration-150">
+                      <label className="text-[11px] font-bold uppercase tracking-widest text-gray-400">
+                        Office Location <span className="text-red-400">*</span>
+                      </label>
+                      <input 
+                        type="text"
+                        required
+                        value={jobFormLocation}
+                        onChange={(e) => setJobFormLocation(e.target.value)}
+                        placeholder="e.g. Nellore, Andhra Pradesh / Bangalore"
+                        className="w-full bg-white/[0.04] border border-white/10 rounded-xl px-4 py-3 text-white text-xs outline-none focus:border-blue-500"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* 4. Key Context & AI Generator */}
+                <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-900/20 to-purple-900/20 border border-blue-500/20 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-bold uppercase tracking-widest text-blue-300 flex items-center gap-1.5">
+                      <Sparkles size={13} /> Key Context / Focus Keywords (Optional for AI Generation)
+                    </label>
+                    <button
+                      type="button"
+                      disabled={jobFormGeneratingAI}
+                      onClick={handleGenerateAIDescription}
+                      className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center gap-1.5 disabled:opacity-50 transition-all shadow-md shadow-blue-500/20 active:scale-95"
+                    >
+                      {jobFormGeneratingAI ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                      <span>Generate AI Description</span>
+                    </button>
+                  </div>
+                  <input 
+                    type="text"
+                    value={jobFormKeyContext}
+                    onChange={(e) => setJobFormKeyContext(e.target.value)}
+                    placeholder="e.g. React 19, TypeScript, Tailwind, Node.js API, REST, MongoDB, Nellore mentorship"
+                    className="w-full bg-white/[0.04] border border-white/10 rounded-xl px-3.5 py-2 text-white text-xs outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                {/* 5. Description Section */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold uppercase tracking-widest text-gray-400">
+                    Description Section <span className="text-red-400">*</span>
+                  </label>
+                  <textarea 
+                    rows={6}
+                    required
+                    value={jobFormDescription}
+                    onChange={(e) => setJobFormDescription(e.target.value)}
+                    placeholder="Enter or AI-generate job description, responsibilities, and requirements..."
+                    className="w-full bg-white/[0.04] border border-white/10 rounded-xl px-4 py-3 text-white text-xs outline-none focus:border-blue-500 resize-none font-sans"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/10">
                   <button
-                    disabled={currentPage >= totalPages}
-                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                    className="px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-white font-semibold transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1"
+                    type="button"
+                    onClick={() => setIsCreateJobOpen(false)}
+                    className="px-5 py-2.5 rounded-xl bg-white/5 text-gray-300 text-xs font-bold hover:bg-white/10"
                   >
-                    Next <ChevronRight size={14} />
+                    Cancel
                   </button>
+                  <button
+                    type="submit"
+                    disabled={jobFormSaving}
+                    className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-xs shadow-lg shadow-blue-500/25 hover:opacity-90 disabled:opacity-50"
+                  >
+                    {jobFormSaving ? 'Publishing...' : 'Publish Opportunity'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* ==========================================
+            MODAL: CANDIDATE APPLICATION DETAIL & STATUS UPDATE
+        ========================================== */}
+        {selectedAppForDetail && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-md overflow-y-auto animate-in fade-in">
+            <div className="relative w-full max-w-3xl bg-[#0b0f19] border border-white/10 rounded-[2.5rem] p-6 sm:p-8 space-y-6 shadow-2xl my-auto">
+              
+              {/* Header */}
+              <div className="flex items-start justify-between border-b border-white/10 pb-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-xs font-bold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20">
+                      {selectedAppForDetail.applicationId}
+                    </span>
+                    <span className="text-xs text-gray-400">
+                      Applied for <strong className="text-white">{selectedAppForDetail.jobTitle} ({selectedAppForDetail.jobType})</strong>
+                    </span>
+                  </div>
+                  <h3 className="text-2xl font-black text-white">{selectedAppForDetail.name}</h3>
+                </div>
+
+                <button onClick={() => setSelectedAppForDetail(null)} className="p-2 rounded-full bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white">
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* 3-Stage Information Breakdown */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                
+                {/* Stage 1 */}
+                <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/5 space-y-2">
+                  <div className="font-bold text-blue-400 uppercase text-[10px] tracking-wider">Stage 1: Basic Details</div>
+                  <div><strong className="text-gray-400">Email:</strong> <span className="text-white">{selectedAppForDetail.email}</span></div>
+                  <div><strong className="text-gray-400">Phone:</strong> <span className="text-white">{selectedAppForDetail.phone}</span></div>
+                  <div><strong className="text-gray-400">Location:</strong> <span className="text-white">{selectedAppForDetail.location}</span></div>
+                  {selectedAppForDetail.resumeUrl && (
+                    <div className="pt-1">
+                      <a href={selectedAppForDetail.resumeUrl} target="_blank" rel="noreferrer" className="text-blue-400 underline font-bold flex items-center gap-1">
+                        <FileText size={12} /> Download / View Resume
+                      </a>
+                    </div>
+                  )}
+                </div>
+
+                {/* Stage 2 */}
+                <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/5 space-y-2">
+                  <div className="font-bold text-purple-400 uppercase text-[10px] tracking-wider">Stage 2: Education & Exp</div>
+                  <div><strong className="text-gray-400">Degree:</strong> <span className="text-white">{selectedAppForDetail.highestQualification}</span></div>
+                  <div><strong className="text-gray-400">College:</strong> <span className="text-white">{selectedAppForDetail.collegeName}</span></div>
+                  <div><strong className="text-gray-400">Branch:</strong> <span className="text-white">{selectedAppForDetail.sector}</span></div>
+                  <div><strong className="text-gray-400">Score:</strong> <span className="text-emerald-400 font-bold">{selectedAppForDetail.score}</span> ({selectedAppForDetail.yearOfCompletion})</div>
+                  <div><strong className="text-gray-400">Experience:</strong> <span className="text-gray-300">{selectedAppForDetail.jobExperienceDetails || 'Fresher'}</span></div>
+                </div>
+
+                {/* Stage 3 */}
+                <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/5 space-y-2">
+                  <div className="font-bold text-emerald-400 uppercase text-[10px] tracking-wider">Stage 3: Verification</div>
+                  <div><strong className="text-gray-400">Gender:</strong> <span className="text-white">{selectedAppForDetail.gender}</span></div>
+                  <div><strong className="text-gray-400">DOB:</strong> <span className="text-white">{selectedAppForDetail.dob || 'N/A'}</span></div>
+                  <div><strong className="text-gray-400">Terms Agreed:</strong> <span className="text-emerald-400">Yes</span></div>
+                  {selectedAppForDetail.offerDetails?.offerId && (
+                    <div className="pt-1 font-mono text-emerald-300 font-bold">
+                      Offer ID: {selectedAppForDetail.offerDetails.offerId}
+                    </div>
+                  )}
                 </div>
               </div>
-            </>
-          )}
-        </div>
+
+              {/* Status Update Pipeline Actions */}
+              <div className="p-5 rounded-2xl bg-gradient-to-r from-blue-900/20 via-indigo-900/20 to-purple-900/20 border border-white/10 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-gray-300">
+                    Change Pipeline Status & Dispatch Automatic Email:
+                  </span>
+                  <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${
+                    selectedAppForDetail.status === 'Hired' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' : 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+                  }`}>
+                    Current: {selectedAppForDetail.status}
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => handleUpdateApplicationStatus('Shortlisted')}
+                    disabled={statusUpdating}
+                    className="px-3.5 py-2 rounded-xl bg-purple-600/30 hover:bg-purple-600/50 border border-purple-500/40 text-purple-200 text-xs font-bold transition-all"
+                  >
+                    🎉 Shortlist Candidate
+                  </button>
+
+                  <button
+                    onClick={() => setStatusUpdateMode(statusUpdateMode === 'interview' ? 'idle' : 'interview')}
+                    className="px-3.5 py-2 rounded-xl bg-blue-600/30 hover:bg-blue-600/50 border border-blue-500/40 text-blue-200 text-xs font-bold transition-all"
+                  >
+                    📅 Schedule Interview
+                  </button>
+
+                  <button
+                    onClick={() => setStatusUpdateMode(statusUpdateMode === 'hire' ? 'idle' : 'hire')}
+                    className="px-3.5 py-2 rounded-xl bg-emerald-600/30 hover:bg-emerald-600/50 border border-emerald-500/40 text-emerald-200 text-xs font-bold transition-all"
+                  >
+                    🏆 Hire & Issue Offer ID
+                  </button>
+
+                  <button
+                    onClick={() => handleUpdateApplicationStatus('Dropped')}
+                    disabled={statusUpdating}
+                    className="px-3.5 py-2 rounded-xl bg-red-600/20 hover:bg-red-600/40 border border-red-500/30 text-red-300 text-xs font-bold transition-all"
+                  >
+                    🚫 Drop / Reject
+                  </button>
+                </div>
+
+                {/* Sub-form: Interview Scheduling */}
+                {statusUpdateMode === 'interview' && (
+                  <div className="p-4 rounded-xl bg-black/40 border border-blue-500/30 space-y-3 animate-in fade-in">
+                    <h4 className="text-xs font-bold text-blue-300">Configure Interview Slot (Sends Automated Meet Email):</h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <input 
+                        type="date" 
+                        value={interviewDate}
+                        onChange={(e) => setInterviewDate(e.target.value)}
+                        className="bg-[#111624] border border-white/10 rounded-lg px-3 py-2 text-xs text-white"
+                      />
+                      <input 
+                        type="text" 
+                        value={interviewTime}
+                        onChange={(e) => setInterviewTime(e.target.value)}
+                        placeholder="Time slot (e.g. 11:00 AM IST)"
+                        className="bg-[#111624] border border-white/10 rounded-lg px-3 py-2 text-xs text-white"
+                      />
+                      <input 
+                        type="text" 
+                        value={interviewLink}
+                        onChange={(e) => setInterviewLink(e.target.value)}
+                        placeholder="Meet link"
+                        className="bg-[#111624] border border-white/10 rounded-lg px-3 py-2 text-xs text-white"
+                      />
+                    </div>
+                    <button
+                      onClick={() => handleUpdateApplicationStatus('Interview Scheduled')}
+                      disabled={statusUpdating}
+                      className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs"
+                    >
+                      {statusUpdating ? 'Sending...' : 'Confirm & Dispatch Interview Invitation Email'}
+                    </button>
+                  </div>
+                )}
+
+                {/* Sub-form: Hire & Offer ID */}
+                {statusUpdateMode === 'hire' && (
+                  <div className="p-4 rounded-xl bg-black/40 border border-emerald-500/30 space-y-3 animate-in fade-in">
+                    <h4 className="text-xs font-bold text-emerald-300">Assign Unique Offer ID & Dispatch Official Selection Email:</h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="text-[10px] text-gray-400 uppercase">Offer ID (Verifiable Online)</label>
+                        <input 
+                          type="text" 
+                          value={hireOfferId}
+                          onChange={(e) => setHireOfferId(e.target.value.toUpperCase())}
+                          placeholder="e.g. FBT-01I-A101"
+                          className="w-full bg-[#111624] border border-white/10 rounded-lg px-3 py-2 text-xs text-emerald-300 font-mono font-bold"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-gray-400 uppercase">Joining Date</label>
+                        <input 
+                          type="text" 
+                          value={hireJoiningDate}
+                          onChange={(e) => setHireJoiningDate(e.target.value)}
+                          placeholder="Immediate / Date"
+                          className="w-full bg-[#111624] border border-white/10 rounded-lg px-3 py-2 text-xs text-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-gray-400 uppercase">Terms / Stipend</label>
+                        <input 
+                          type="text" 
+                          value={hireCompensation}
+                          onChange={(e) => setHireCompensation(e.target.value)}
+                          placeholder="As discussed"
+                          className="w-full bg-[#111624] border border-white/10 rounded-lg px-3 py-2 text-xs text-white"
+                        />
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleUpdateApplicationStatus('Hired')}
+                      disabled={statusUpdating}
+                      className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs"
+                    >
+                      {statusUpdating ? 'Sending...' : 'Confirm Hire & Dispatch Official Offer Letter Email'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Ready-To-Copy Email Preview Box (For manual sending if needed) */}
+              {copiedTemplate && (
+                <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 space-y-2 animate-in fade-in">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                      <Mail size={14} /> Ready-to-Copy Email Prepared (Manual Copy Available):
+                    </span>
+                    <button
+                      onClick={handleCopyEmailText}
+                      className="px-3 py-1 rounded-lg bg-emerald-600 text-white text-xs font-bold flex items-center gap-1 hover:bg-emerald-500 transition-all shadow-md shadow-emerald-500/20"
+                    >
+                      {hasCopiedText ? <Check size={12} /> : <Copy size={12} />}
+                      <span>{hasCopiedText ? 'Copied!' : 'Copy Email Text'}</span>
+                    </button>
+                  </div>
+                  <div className="p-3 bg-black/50 rounded-xl font-mono text-[11px] text-gray-300 space-y-1 max-h-36 overflow-y-auto whitespace-pre-wrap">
+                    <div className="text-blue-400 font-bold">Subject: {copiedTemplate.subject}</div>
+                    <div className="text-gray-400">To: {copiedTemplate.to}</div>
+                    <div className="border-t border-white/10 pt-1 mt-1">{copiedTemplate.body}</div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

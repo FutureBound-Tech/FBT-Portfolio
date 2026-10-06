@@ -65,6 +65,7 @@ export const EMAILJS_CONFIG = {
 export const STATIC_MEET_LINK = 'https://meet.google.com/koi-medw-gni';
 
 export const CAREER_DOMAINS = [
+  'Associate Software Developer',
   'Full Stack Development',
   'Backend Development',
   'Artificial Intelligence (AI)',
