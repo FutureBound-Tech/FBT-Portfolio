@@ -12,7 +12,8 @@ import {
   Briefcase, 
   Building2, 
   QrCode, 
-  ExternalLink 
+  ExternalLink,
+  FileText 
 } from 'lucide-react';
 import { COMPANY_NAME } from '../constants';
 
@@ -181,6 +182,25 @@ export const OfferVerificationModal: React.FC<OfferVerificationModalProps> = ({
                     </p>
                   </div>
                 </div>
+
+                {/* Offer Letter PDF Link if available */}
+                {result.offerLetterUrl && (
+                  <div className="mt-4 p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <FileText size={16} className="text-emerald-400 shrink-0" />
+                      <span className="text-xs text-white font-medium">Official Signed Offer Letter PDF Document</span>
+                    </div>
+                    <a
+                      href={result.offerLetterUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-md shadow-emerald-600/30"
+                    >
+                      <span>Download / View PDF</span>
+                      <ExternalLink size={12} />
+                    </a>
+                  </div>
+                )}
 
                 {/* Official Seal Footer */}
                 <div className="mt-6 pt-4 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">

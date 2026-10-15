@@ -15,17 +15,25 @@ import {
   handleContactEmails, 
   sendAdminLoginNotification,
   generateUniqueReviewAI,
-  STATIC_MEET_LINK 
+  STATIC_MEET_LINK,
+  enhanceJobMessageAI,
+  renderJobUpdateEmailHtml,
+  sendJobOpportunityBroadcast
 } from './aiEmailService.js';
 
 export const apiRouter = express.Router();
-apiRouter.use(express.json());
+apiRouter.use(express.json({ limit: '25mb' }));
+apiRouter.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
-// Ensure upload directory exists (use tmp in serverless environments like Vercel)
+// Ensure upload directories exist (use tmp in serverless environments like Vercel)
 const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
 const uploadDir = isServerless
   ? path.join(os.tmpdir(), 'resumes')
   : path.join(process.cwd(), 'server', 'uploads', 'resumes');
+
+const offersUploadDir = isServerless
+  ? path.join(os.tmpdir(), 'offers')
+  : path.join(process.cwd(), 'server', 'uploads', 'offers');
 
 try {
   if (!fs.existsSync(uploadDir)) {
@@ -33,6 +41,14 @@ try {
   }
 } catch (err) {
   console.warn('⚠️ Warning: Could not create upload directory:', err.message);
+}
+
+try {
+  if (!fs.existsSync(offersUploadDir)) {
+    fs.mkdirSync(offersUploadDir, { recursive: true });
+  }
+} catch (err) {
+  console.warn('⚠️ Warning: Could not create offers upload directory:', err.message);
 }
 
 const storage = multer.diskStorage({
@@ -264,9 +280,81 @@ apiRouter.delete('/jobs/:id', async (req, res) => {
   }
 });
 
-// ==========================================
-// 2. 3-STAGE JOB & INTERNSHIP APPLICATIONS
-// ==========================================
+// Terminal statuses where a candidate is allowed to apply again
+const TERMINAL_STATUSES = ['Dropped', 'Rejected', 'Hired', 'dropped', 'rejected', 'hired'];
+
+// Helper to check if a candidate with this email has an active application
+export async function findActiveCandidateApplication(rawEmail) {
+  if (!rawEmail || typeof rawEmail !== 'string') return null;
+  const cleanEmail = rawEmail.trim();
+  if (!cleanEmail || !cleanEmail.includes('@')) return null;
+  const emailRegex = new RegExp(`^${cleanEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+
+  try {
+    const appsCol = await getCollection('job_applications');
+    const activeJobApp = await appsCol.findOne({
+      email: emailRegex,
+      status: { $nin: TERMINAL_STATUSES }
+    });
+
+    if (activeJobApp) {
+      return {
+        type: 'job_application',
+        applicationId: activeJobApp.applicationId,
+        jobTitle: activeJobApp.jobTitle || 'Applied Role',
+        jobType: activeJobApp.jobType || 'Job',
+        jobId: activeJobApp.jobId,
+        status: activeJobApp.status || 'Applied',
+        createdAt: activeJobApp.createdAt
+      };
+    }
+
+    const careersCol = await getCollection('careers');
+    const activeCareerApp = await careersCol.findOne({
+      email: emailRegex,
+      status: { $nin: TERMINAL_STATUSES }
+    });
+
+    if (activeCareerApp) {
+      return {
+        type: 'career_application',
+        applicationId: activeCareerApp._id?.toString(),
+        jobTitle: activeCareerApp.domain || 'General Career Application',
+        jobType: 'General',
+        status: activeCareerApp.status || 'New',
+        createdAt: activeCareerApp.createdAt
+      };
+    }
+  } catch (err) {
+    console.error('Error in findActiveCandidateApplication:', err);
+  }
+
+  return null;
+}
+
+// Real-time active application validation endpoint
+apiRouter.get('/job-applications/check-active', async (req, res) => {
+  try {
+    const { email } = req.query;
+    if (!email || typeof email !== 'string' || !email.includes('@')) {
+      return res.json({ hasActiveApplication: false });
+    }
+
+    const activeApp = await findActiveCandidateApplication(email);
+    if (activeApp) {
+      return res.json({
+        hasActiveApplication: true,
+        activeApplication: activeApp,
+        message: `You already have an active application in progress for "${activeApp.jobTitle}" (Status: ${activeApp.status}). You can submit a new application once your current application is finalized (Hired or Dropped).`
+      });
+    }
+
+    return res.json({ hasActiveApplication: false });
+  } catch (error) {
+    console.error('Error checking active application:', error);
+    return res.status(500).json({ hasActiveApplication: false, error: error.message });
+  }
+});
 
 // Submit 3-stage candidate application
 apiRouter.post('/job-applications', upload.single('resume'), async (req, res) => {
@@ -298,7 +386,35 @@ apiRouter.post('/job-applications', upload.single('resume'), async (req, res) =>
       return res.status(400).json({ success: false, message: 'Missing essential application fields' });
     }
 
+    // Check if candidate already has an active application
+    const activeApp = await findActiveCandidateApplication(email);
+    if (activeApp) {
+      return res.status(400).json({
+        success: false,
+        code: 'ACTIVE_APPLICATION_EXISTS',
+        activeApplication: activeApp,
+        message: `You already have an active application in progress for "${activeApp.jobTitle}" (Status: ${activeApp.status}). You can only submit a new application once your current application is finalized.`
+      });
+    }
+
     const appId = `APP-${Date.now().toString().slice(-6)}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
+
+    let resumeData = null;
+    let resumeFilename = null;
+    let resumeMimeType = null;
+    if (req.file) {
+      resumeFilename = req.file.filename;
+      resumeMimeType = req.file.mimetype || 'application/pdf';
+      try {
+        if (req.file.path && fs.existsSync(req.file.path)) {
+          resumeData = fs.readFileSync(req.file.path).toString('base64');
+        } else if (req.file.buffer) {
+          resumeData = req.file.buffer.toString('base64');
+        }
+      } catch (fErr) {
+        console.warn('Could not encode resume to base64:', fErr.message);
+      }
+    }
 
     const newApplication = {
       applicationId: appId,
@@ -311,6 +427,9 @@ apiRouter.post('/job-applications', upload.single('resume'), async (req, res) =>
       phone,
       location: location || '',
       resumeUrl: req.file ? `/uploads/resumes/${req.file.filename}` : null,
+      resumeFilename,
+      resumeMimeType,
+      resumeData,
       // Stage 2
       highestQualification: highestQualification || '',
       collegeName: collegeName || '',
@@ -339,6 +458,28 @@ apiRouter.post('/job-applications', upload.single('resume'), async (req, res) =>
 
     const appsCollection = await getCollection('job_applications');
     const result = await appsCollection.insertOne(newApplication);
+
+    if (req.file && resumeData) {
+      try {
+        const resumesCol = await getCollection('resumes');
+        await resumesCol.updateOne(
+          { filename: resumeFilename },
+          { 
+            $set: { 
+              filename: resumeFilename, 
+              resumeUrl: `/uploads/resumes/${resumeFilename}`, 
+              resumeData, 
+              resumeMimeType, 
+              applicationId: appId, 
+              createdAt: new Date() 
+            } 
+          },
+          { upsert: true }
+        );
+      } catch (rErr) {
+        console.warn('Error saving resume to standalone resumes collection:', rErr.message);
+      }
+    }
 
     // Increment applicant count on the Job
     try {
@@ -398,7 +539,21 @@ apiRouter.get('/job-applications', async (req, res) => {
 apiRouter.put('/job-applications/:id/status', async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, notes, interviewDate, interviewTime, interviewLink, offerId, joiningDate, compensation } = req.body;
+    const { 
+      status, 
+      notes, 
+      interviewDate, 
+      interviewTime, 
+      interviewLink, 
+      offerId, 
+      joiningDate, 
+      compensation,
+      offerPdfBase64,
+      offerPdfFilename,
+      isRescheduled,
+      rescheduleReason,
+      rescheduleReasonKey
+    } = req.body;
 
     if (!status) {
       return res.status(400).json({ success: false, message: 'Status is required' });
@@ -413,11 +568,35 @@ apiRouter.put('/job-applications/:id/status', async (req, res) => {
 
     let finalOfferId = offerId;
     let offerRecord = application.offerDetails || null;
+    let offerLetterUrl = offerRecord?.offerLetterUrl || null;
+    let offerLetterFilename = offerRecord?.offerLetterFilename || null;
+    let offerLetterData = offerRecord?.offerLetterData || null;
 
     // If candidate is Hired, generate or assign unique Offer ID and save to offers collection
     if (status === 'Hired') {
       if (!finalOfferId) {
         finalOfferId = generateUniqueOfferId(application.jobType);
+      }
+
+      // Process attached PDF Offer Letter if provided
+      if (offerPdfBase64) {
+        try {
+          const rawBase64 = String(offerPdfBase64).replace(/^data:[^;]+;base64,/, '');
+          offerLetterData = rawBase64;
+          const cleanName = (offerPdfFilename || `Offer_Letter_${finalOfferId}.pdf`).replace(/\s+/g, '-');
+          offerLetterFilename = `${Date.now()}-${cleanName}`;
+          offerLetterUrl = `/uploads/offers/${offerLetterFilename}`;
+
+          // Write to offersUploadDir on disk
+          try {
+            const destPath = path.join(offersUploadDir, offerLetterFilename);
+            fs.writeFileSync(destPath, Buffer.from(rawBase64, 'base64'));
+          } catch (writeErr) {
+            console.warn('⚠️ Could not save offer PDF to filesystem:', writeErr.message);
+          }
+        } catch (encErr) {
+          console.warn('⚠️ Failed processing offer PDF data:', encErr.message);
+        }
       }
 
       offerRecord = {
@@ -429,6 +608,9 @@ apiRouter.put('/job-applications/:id/status', async (req, res) => {
         jobId: application.jobId,
         joiningDate: joiningDate || 'Immediate',
         compensation: compensation || 'Competitive / Performance Stipend',
+        offerLetterUrl,
+        offerLetterFilename,
+        offerLetterData,
         issuedAt: new Date(),
         status: 'Verified & Active'
       };
@@ -448,8 +630,19 @@ apiRouter.put('/job-applications/:id/status', async (req, res) => {
     const statusEntry = {
       status,
       updatedAt: new Date(),
-      notes: notes || `Status updated to ${status}`,
-      details: { interviewDate, interviewTime, interviewLink, offerId: finalOfferId, joiningDate, compensation }
+      notes: notes || (isRescheduled ? `Interview Rescheduled: ${rescheduleReason || 'Time updated'}` : `Status updated to ${status}`),
+      details: { 
+        interviewDate, 
+        interviewTime, 
+        interviewLink, 
+        offerId: finalOfferId, 
+        joiningDate, 
+        compensation, 
+        offerLetterUrl,
+        isRescheduled: Boolean(isRescheduled),
+        rescheduleReason,
+        rescheduleReasonKey
+      }
     };
 
     const updateDoc = {
@@ -467,24 +660,51 @@ apiRouter.put('/job-applications/:id/status', async (req, res) => {
 
     const updatedApp = { ...application, status, offerDetails: offerRecord };
 
-    // Auto-send automated email to candidate
+    // Auto-send automated email to candidate with offer PDF attached or reschedule details
     handleApplicationStatusEmail({
       application: updatedApp,
       newStatus: status,
-      details: { interviewDate, interviewTime, interviewLink, offerId: finalOfferId, joiningDate, compensation }
+      details: { 
+        interviewDate, 
+        interviewTime, 
+        interviewLink, 
+        offerId: finalOfferId, 
+        joiningDate, 
+        compensation,
+        isRescheduled: Boolean(isRescheduled),
+        rescheduleReason,
+        rescheduleReasonKey,
+        offerPdf: offerLetterData ? {
+          filename: offerPdfFilename || `Offer_Letter_${finalOfferId}.pdf`,
+          content: offerLetterData
+        } : null
+      }
     }).catch(e => console.error('Status change email notify error:', e));
 
     // Prepare manual copyable email template for admin
     const manualTemplate = prepareManualEmailTemplate({
       application: updatedApp,
       status,
-      details: { interviewDate, interviewTime, interviewLink, offerId: finalOfferId, joiningDate, compensation }
+      details: { 
+        interviewDate, 
+        interviewTime, 
+        interviewLink, 
+        offerId: finalOfferId, 
+        joiningDate, 
+        compensation,
+        isRescheduled: Boolean(isRescheduled),
+        rescheduleReason,
+        rescheduleReasonKey
+      }
     });
 
     res.json({
       success: true,
-      message: `Application status updated to ${status}. Automated notification email sent!`,
+      message: isRescheduled 
+        ? `Interview successfully rescheduled! Notification email dispatched to candidate.`
+        : `Application status updated to ${status}. Automated notification email sent${offerLetterUrl ? ' with attached Offer Letter PDF' : ''}!`,
       offerId: finalOfferId,
+      offerLetterUrl,
       manualTemplate
     });
   } catch (error) {
@@ -553,6 +773,7 @@ apiRouter.get('/offers/verify/:offerId', async (req, res) => {
         jobTitle: offer.jobTitle,
         jobType: offer.jobType,
         jobId: offer.jobId,
+        offerLetterUrl: offer.offerLetterUrl || null,
         issuedAt: offer.issuedAt,
         status: offer.status || 'Verified & Authentic',
         organization: 'Future Bound Tech',
@@ -588,6 +809,34 @@ apiRouter.post('/careers', upload.single('resume'), async (req, res) => {
       return res.status(400).json({ success: false, message: 'Missing required fields' });
     }
 
+    // Check if candidate already has an active application
+    const activeApp = await findActiveCandidateApplication(email);
+    if (activeApp) {
+      return res.status(400).json({
+        success: false,
+        code: 'ACTIVE_APPLICATION_EXISTS',
+        activeApplication: activeApp,
+        message: `You already have an active application in progress for "${activeApp.jobTitle}" (Status: ${activeApp.status}). You can only submit a new application once your current application is finalized.`
+      });
+    }
+
+    let resumeData = null;
+    let resumeFilename = null;
+    let resumeMimeType = null;
+    if (req.file) {
+      resumeFilename = req.file.filename;
+      resumeMimeType = req.file.mimetype || 'application/pdf';
+      try {
+        if (req.file.path && fs.existsSync(req.file.path)) {
+          resumeData = fs.readFileSync(req.file.path).toString('base64');
+        } else if (req.file.buffer) {
+          resumeData = req.file.buffer.toString('base64');
+        }
+      } catch (fErr) {
+        console.warn('Could not encode career resume to base64:', fErr.message);
+      }
+    }
+
     const collection = await getCollection('careers');
     const newApplication = {
       name,
@@ -600,11 +849,35 @@ apiRouter.post('/careers', upload.single('resume'), async (req, res) => {
       domain,
       message: message || '',
       resumeUrl: req.file ? `/uploads/resumes/${req.file.filename}` : null,
+      resumeFilename,
+      resumeMimeType,
+      resumeData,
       status: 'New',
       createdAt: new Date()
     };
 
     const result = await collection.insertOne(newApplication);
+
+    if (req.file && resumeData) {
+      try {
+        const resumesCol = await getCollection('resumes');
+        await resumesCol.updateOne(
+          { filename: resumeFilename },
+          { 
+            $set: { 
+              filename: resumeFilename, 
+              resumeUrl: `/uploads/resumes/${resumeFilename}`, 
+              resumeData, 
+              resumeMimeType, 
+              createdAt: new Date() 
+            } 
+          },
+          { upsert: true }
+        );
+      } catch (rErr) {
+        console.warn('Error saving career resume to resumes collection:', rErr.message);
+      }
+    }
     handleCareerEmails(newApplication).catch(e => console.error('Career email error:', e));
 
     res.status(201).json({ 
@@ -902,4 +1175,151 @@ apiRouter.post('/webhooks/hostinger', async (req, res) => {
     });
   }
 });
+
+// ==========================================
+// 8. SEND MESSAGE & JOB OPPORTUNITY BROADCAST
+// ==========================================
+
+// AI Message Enhancer & Heading Generator
+apiRouter.post('/messages/enhance-ai', async (req, res) => {
+  try {
+    const { rawContent, context } = req.body;
+    if (!rawContent || !rawContent.trim()) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Please paste or provide message content for AI enhancement.' 
+      });
+    }
+
+    const enhanced = await enhanceJobMessageAI({
+      rawContent,
+      context: context || ''
+    });
+
+    res.json({
+      success: true,
+      heading: enhanced.heading,
+      subject: enhanced.subject || enhanced.heading,
+      enhancedMessage: enhanced.enhancedMessage,
+      structuredData: enhanced.structuredData || null
+    });
+  } catch (error) {
+    console.error('Error enhancing message with AI:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to enhance message with AI', 
+      error: error.message 
+    });
+  }
+});
+
+// Generate Live HTML Preview for Admin
+apiRouter.post('/messages/preview', (req, res) => {
+  try {
+    const { heading, message, candidateName, attachments, structuredData } = req.body;
+    const html = renderJobUpdateEmailHtml({
+      heading: heading || 'Job Opportunity Update',
+      candidateName: candidateName || 'Candidate Name',
+      messageContent: message || '',
+      attachments: attachments || [],
+      structuredData: structuredData || null
+    });
+
+    res.json({ success: true, html });
+  } catch (error) {
+    console.error('Error generating email preview:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to generate preview', 
+      error: error.message 
+    });
+  }
+});
+
+// Send Broadcast Email to Selected or All Candidates
+apiRouter.post('/messages/send-broadcast', async (req, res) => {
+  try {
+    const { recipients, heading, message, attachments, structuredData } = req.body;
+
+    if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Please select at least one candidate to send the message to.' 
+      });
+    }
+
+    if (!heading || !heading.trim()) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Email heading / subject line is required.' 
+      });
+    }
+
+    if (!message || !message.trim()) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Message content cannot be empty.' 
+      });
+    }
+
+    // Dispatch broadcast emails
+    const result = await sendJobOpportunityBroadcast({
+      recipients,
+      heading: heading.trim(),
+      message: message.trim(),
+      attachments: attachments || [],
+      structuredData: structuredData || null
+    });
+
+    // Save record of broadcast in MongoDB
+    try {
+      const broadcastCol = await getCollection('broadcast_messages');
+      await broadcastCol.insertOne({
+        heading: heading.trim(),
+        message: message.trim(),
+        structuredData: structuredData || null,
+        recipientCount: recipients.length,
+        recipients: recipients.map(r => ({ name: r.name, email: r.email, jobTitle: r.jobTitle || '' })),
+        recipientsSample: recipients.slice(0, 10).map(r => ({ name: r.name, email: r.email })),
+        hasAttachments: Boolean(attachments && attachments.length > 0),
+        attachmentsCount: attachments ? attachments.length : 0,
+        sentCount: result.sentCount,
+        failedCount: result.failedCount,
+        sentAt: new Date()
+      });
+    } catch (dbErr) {
+      console.warn('⚠️ Could not log broadcast message to database:', dbErr.message);
+    }
+
+    res.json({
+      success: true,
+      message: `Message broadcast completed! Delivered to ${result.sentCount} of ${result.total} candidate(s).`,
+      details: result
+    });
+  } catch (error) {
+    console.error('Error sending message broadcast:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to send broadcast emails', 
+      error: error.message 
+    });
+  }
+});
+
+// Get Past Broadcast History
+apiRouter.get('/messages/broadcast-history', async (req, res) => {
+  try {
+    const broadcastCol = await getCollection('broadcast_messages');
+    const history = await broadcastCol.find({}).sort({ sentAt: -1 }).limit(30).toArray();
+    res.json({ success: true, count: history.length, data: history });
+  } catch (error) {
+    console.error('Error fetching broadcast history:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to fetch broadcast history', 
+      error: error.message 
+    });
+  }
+});
+
 

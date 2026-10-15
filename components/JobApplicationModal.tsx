@@ -97,8 +97,37 @@ export const JobApplicationModal: React.FC<JobApplicationModalProps> = ({ isOpen
   const [submitting, setSubmitting] = useState(false);
   const [submittedAppId, setSubmittedAppId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
+  const [activeAppInfo, setActiveAppInfo] = useState<any>(null);
+  const [checkingActive, setCheckingActive] = useState(false);
 
   if (!isOpen || !job) return null;
+
+  const checkActiveApplication = async (emailToCheck?: string) => {
+    const emailVal = (emailToCheck !== undefined ? emailToCheck : email).trim();
+    if (!emailVal || !emailVal.includes('@') || emailVal.length < 5) {
+      setActiveAppInfo(null);
+      return null;
+    }
+
+    try {
+      setCheckingActive(true);
+      const res = await fetch(`/api/job-applications/check-active?email=${encodeURIComponent(emailVal)}`);
+      const data = await res.json();
+      if (data.hasActiveApplication && data.activeApplication) {
+        setActiveAppInfo(data.activeApplication);
+        setErrorMessage(`Active application found for "${data.activeApplication.jobTitle}" (Status: ${data.activeApplication.status}).`);
+        return data.activeApplication;
+      } else {
+        setActiveAppInfo(null);
+        return null;
+      }
+    } catch (e) {
+      console.warn('Could not verify active application status:', e);
+      return null;
+    } finally {
+      setCheckingActive(false);
+    }
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -113,6 +142,10 @@ export const JobApplicationModal: React.FC<JobApplicationModalProps> = ({ isOpen
   };
 
   const validateStage1 = () => {
+    if (activeAppInfo) {
+      setErrorMessage(`You already have an active application in progress for "${activeAppInfo.jobTitle}" (Status: ${activeAppInfo.status}). You cannot submit another application until your current application is finalized.`);
+      return false;
+    }
     if (!resumeFile) {
       setErrorMessage('Please upload your resume (PDF or Word document).');
       return false;
@@ -158,8 +191,11 @@ export const JobApplicationModal: React.FC<JobApplicationModalProps> = ({ isOpen
     return true;
   };
 
-  const nextStage = () => {
-    if (currentStage === 1 && validateStage1()) {
+  const nextStage = async () => {
+    if (currentStage === 1) {
+      if (!validateStage1()) return;
+      const active = await checkActiveApplication();
+      if (active) return;
       setCurrentStage(2);
     } else if (currentStage === 2 && validateStage2()) {
       setCurrentStage(3);
@@ -183,6 +219,13 @@ export const JobApplicationModal: React.FC<JobApplicationModalProps> = ({ isOpen
     setErrorMessage('');
 
     try {
+      const active = await checkActiveApplication();
+      if (active) {
+        setErrorMessage(`You already have an active application in progress for "${active.jobTitle}" (Status: ${active.status}).`);
+        setSubmitting(false);
+        return;
+      }
+
       const formData = new FormData();
       formData.append('jobId', job.jobId);
       formData.append('jobTitle', job.title);
@@ -218,6 +261,9 @@ export const JobApplicationModal: React.FC<JobApplicationModalProps> = ({ isOpen
       if (res.ok && data.success) {
         setSubmittedAppId(data.applicationId || 'FBT-APP-SUCCESS');
       } else {
+        if (data.activeApplication) {
+          setActiveAppInfo(data.activeApplication);
+        }
         setErrorMessage(data.message || 'Failed to submit application. Please try again.');
       }
     } catch (err: any) {
@@ -243,6 +289,7 @@ export const JobApplicationModal: React.FC<JobApplicationModalProps> = ({ isOpen
     setAgreedTerms(false);
     setSubmittedAppId(null);
     setErrorMessage('');
+    setActiveAppInfo(null);
     onClose();
   };
 
@@ -435,19 +482,42 @@ export const JobApplicationModal: React.FC<JobApplicationModalProps> = ({ isOpen
                     </div>
 
                     <div className="space-y-1.5">
-                      <label className="text-[11px] font-bold uppercase tracking-widest text-gray-400 flex items-center gap-1.5">
-                        <Mail size={12} className="text-blue-400" /> Email Address <span className="text-red-400">*</span>
+                      <label className="text-[11px] font-bold uppercase tracking-widest text-gray-400 flex items-center justify-between">
+                        <span className="flex items-center gap-1.5"><Mail size={12} className="text-blue-400" /> Email Address <span className="text-red-400">*</span></span>
+                        {checkingActive && <span className="text-[10px] text-blue-400 flex items-center gap-1"><Loader2 size={10} className="animate-spin" /> Verifying...</span>}
                       </label>
                       <input 
                         type="email"
                         required
                         value={email}
-                        onChange={(e) => setEmail(e.target.value)}
+                        onChange={(e) => {
+                          setEmail(e.target.value);
+                          if (activeAppInfo) setActiveAppInfo(null);
+                        }}
+                        onBlur={() => checkActiveApplication()}
                         placeholder="e.g. rahul@example.com"
-                        className="w-full bg-white/[0.04] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-blue-500 text-white text-sm"
+                        className={`w-full bg-white/[0.04] border rounded-xl px-4 py-3 outline-none text-white text-sm transition-all ${
+                          activeAppInfo ? 'border-amber-500/80 bg-amber-500/5' : 'border-white/10 focus:border-blue-500'
+                        }`}
                       />
                     </div>
                   </div>
+
+                  {/* Active Application Existing Warning Banner */}
+                  {activeAppInfo && (
+                    <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/15 to-orange-500/10 border border-amber-500/30 text-amber-200 text-xs flex items-start gap-3 animate-in fade-in zoom-in-95 duration-200 shadow-lg shadow-amber-950/20">
+                      <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                      <div className="space-y-1">
+                        <p className="font-bold text-amber-300 text-sm">Active Application Already in Progress</p>
+                        <p className="text-gray-200 leading-relaxed">
+                          You have an active application submitted for <strong className="text-white">{activeAppInfo.jobTitle}</strong> (Status: <span className="px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 font-bold border border-amber-400/30">{activeAppInfo.status}</span>).
+                        </p>
+                        <p className="text-gray-400 text-[11px] leading-relaxed">
+                          Multiple concurrent applications are not permitted. You may apply for a new opening once your current application is concluded (Hired or Dropped).
+                        </p>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Phone & Location */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

@@ -277,19 +277,42 @@ Requirements:
 /**
  * Resilient Send Email with Hostinger Mail API SDK Primary + Failovers
  */
-export async function sendEmail({ to, subject, html, replyTo, fromName = "Future Bound Tech" }) {
+export async function sendEmail({ to, subject, html, replyTo, fromName = "Future Bound Tech", attachments = [] }) {
   const recipients = Array.isArray(to) ? to : [to];
+
+  // Prepare attachments for Hostinger SDK (base64 string content)
+  const sdkAttachments = (attachments || []).map(att => ({
+    filename: att.filename,
+    content: Buffer.isBuffer(att.content) 
+      ? att.content.toString('base64') 
+      : (typeof att.content === 'string' ? att.content.replace(/^data:[^;]+;base64,/, '') : String(att.content)),
+    contentType: att.contentType || 'application/pdf',
+    encoding: 'base64'
+  }));
+
+  // Prepare attachments for nodemailer (Buffer)
+  const nodemailerAttachments = (attachments || []).map(att => ({
+    filename: att.filename,
+    content: Buffer.isBuffer(att.content) 
+      ? att.content 
+      : Buffer.from(typeof att.content === 'string' ? att.content.replace(/^data:[^;]+;base64,/, '') : '', 'base64'),
+    contentType: att.contentType || 'application/pdf'
+  }));
 
   // Try 1: Official Hostinger Mail API SDK (Direct HTTPS / Port 443 REST)
   try {
     const mailboxId = await getMailboxResourceId();
-    const response = await hostingerSendApi.sendEmail(mailboxId, {
+    const payload = {
       to: recipients,
       displayName: fromName,
       subject,
       html
-    });
-    console.log(`📧 [Hostinger Mail API SDK] Email delivered successfully to ${recipients.join(', ')} from ${HOSTINGER_USER} (Status: ${response?.status || 204})`);
+    };
+    if (sdkAttachments.length > 0) {
+      payload.attachments = sdkAttachments;
+    }
+    const response = await hostingerSendApi.sendEmail(mailboxId, payload);
+    console.log(`📧 [Hostinger Mail API SDK] Email delivered successfully to ${recipients.join(', ')} from ${HOSTINGER_USER} (Status: ${response?.status || 204}, Attachments: ${sdkAttachments.length})`);
     return { success: true, status: response?.status || 204, provider: 'Hostinger Mail API' };
   } catch (sdkErr) {
     const errDetails = sdkErr.response?.data ? JSON.stringify(sdkErr.response.data) : sdkErr.message;
@@ -298,14 +321,18 @@ export async function sendEmail({ to, subject, html, replyTo, fromName = "Future
 
   // Try 2: Hostinger SMTP
   try {
-    const info = await hostingerTransporter.sendMail({
+    const mailOptions = {
       from: `"${fromName}" <${HOSTINGER_USER}>`,
       to: recipients.join(', '),
       replyTo: replyTo || HOSTINGER_USER,
       subject,
       html
-    });
-    console.log(`📧 [Hostinger SMTP] Email delivered to ${recipients.join(', ')} (ID: ${info.messageId})`);
+    };
+    if (nodemailerAttachments.length > 0) {
+      mailOptions.attachments = nodemailerAttachments;
+    }
+    const info = await hostingerTransporter.sendMail(mailOptions);
+    console.log(`📧 [Hostinger SMTP] Email delivered to ${recipients.join(', ')} (ID: ${info.messageId}, Attachments: ${nodemailerAttachments.length})`);
     return { success: true, messageId: info.messageId, provider: 'Hostinger SMTP' };
   } catch (hostingerErr) {
     console.warn(`⚠️ Hostinger SMTP send failed to ${recipients.join(', ')}: ${hostingerErr.message}. Attempting Gmail failover...`);
@@ -313,14 +340,18 @@ export async function sendEmail({ to, subject, html, replyTo, fromName = "Future
 
   // Try 3: Gmail SMTP Fallback
   try {
-    const info = await gmailTransporter.sendMail({
+    const mailOptions = {
       from: `"${fromName}" <${GMAIL_USER}>`,
       to: recipients.join(', '),
       replyTo: replyTo || GMAIL_USER,
       subject,
       html
-    });
-    console.log(`⚡ [Gmail Fallover] Email delivered to ${recipients.join(', ')} (ID: ${info.messageId})`);
+    };
+    if (nodemailerAttachments.length > 0) {
+      mailOptions.attachments = nodemailerAttachments;
+    }
+    const info = await gmailTransporter.sendMail(mailOptions);
+    console.log(`⚡ [Gmail Fallover] Email delivered to ${recipients.join(', ')} (ID: ${info.messageId}, Attachments: ${nodemailerAttachments.length})`);
     return { success: true, messageId: info.messageId, provider: 'Gmail' };
   } catch (gmailErr) {
     console.error(`❌ All email providers failed for ${recipients.join(', ')}:`, gmailErr.message);
@@ -423,28 +454,155 @@ export async function handleCareerEmails(appData) {
   ]);
 }
 
-export const EMAIL_HEADER_IMG = 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9QqHN1_fCC50hdhz-J3_ogWv4njhi78cFjed542OwAVQk152IAdLMMfPSMLq_ndq5QqtOMwxe_SfEHUUCEMAzb655C5d4BxvPdWQuyy-D9Lv77oY0qPMZCxTqGQTkPb9oMbJHbtcdo-zgI=s1360-w1360-h1020-rw';
+export const COMPANY_LOGO_URL = 'https://www.futureboundtech.online/logo.png';
 
-export function renderCleanEmailHtml({ headerTitle, candidateName, bodyContent, jobId, applicationId, jobTitle, jobType }) {
+export function renderCleanEmailHtml({ 
+  badgeLabel = 'RECRUITMENT UPDATE',
+  headerTitle = 'Your application has been shortlisted.',
+  headerSubtitle = 'We are pleased to invite you to the next stage of our selection process.',
+  candidateName, 
+  introContent, 
+  jobId, 
+  applicationId, 
+  jobTitle, 
+  jobType,
+  extraDetailsHtml = '',
+  nextStepsHtml = '',
+  customBodyHtml = ''
+}) {
   return `
-    <div style="font-family: Arial, Helvetica, sans-serif; max-width: 600px; margin: 0 auto; background-color: #0b0f19; color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #1f293d;">
-      <div style="width: 100%; text-align: center; background-color: #05070e;">
-        <img src="${EMAIL_HEADER_IMG}" alt="Future Bound Tech" style="width: 100%; max-width: 600px; height: auto; display: block; border: 0;" />
-      </div>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${headerTitle}</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; color: #334155;">
+  <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f8fafc; padding: 32px 16px;">
+    <tr>
+      <td align="center">
+        <!-- Main Container -->
+        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 620px; background-color: #ffffff; border-radius: 8px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+          
+          <!-- 1. Header (Logo + Company Name) -->
+          <tr>
+            <td style="background-color: #ffffff; padding: 20px 32px; border-bottom: 1px solid #eaecf0;">
+              <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+                <tr>
+                  <td style="vertical-align: middle;">
+                    <table role="presentation" border="0" cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td style="vertical-align: middle; padding-right: 12px;">
+                          <img src="${COMPANY_LOGO_URL}" alt="Future Bound Tech Logo" height="34" style="height: 34px; width: auto; display: block; border: 0;" />
+                        </td>
+                        <td style="vertical-align: middle;">
+                          <span style="font-size: 16px; font-weight: 700; color: #0f172a; letter-spacing: -0.2px; display: block; line-height: 1.2;">Future Bound Tech</span>
+                          <span style="font-size: 11px; color: #64748b; font-weight: 500; display: block;">Talent Acquisition & Recruitment</span>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                  <td align="right" style="vertical-align: middle;">
+                    <span style="font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Official Notice</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
 
-      <div style="padding: 24px 28px;">
-        <div style="background: linear-gradient(135deg, #2563eb, #7c3aed); padding: 16px 20px; border-radius: 12px; margin-bottom: 22px;">
-          <h2 style="margin: 0; color: #ffffff; font-size: 18px; font-weight: 700;">${headerTitle}</h2>
-          ${jobTitle ? `<p style="margin: 4px 0 0 0; color: #dbeafe; font-size: 13px;">${jobType || 'Position'}: ${jobTitle} ${jobId ? `(Job ID: ${jobId})` : ''}</p>` : ''}
-        </div>
+          <!-- 2. Hero Section (Navy -> Indigo/Purple Gradient) -->
+          <tr>
+            <td style="background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 60%, #312e81 100%); padding: 32px 32px; color: #ffffff;">
+              <span style="font-size: 11px; font-weight: 700; letter-spacing: 1.5px; color: #a5b4fc; text-transform: uppercase; display: block; margin-bottom: 8px;">
+                ${badgeLabel}
+              </span>
+              <h1 style="margin: 0 0 8px 0; font-size: 21px; font-weight: 700; color: #ffffff; line-height: 1.35;">
+                ${headerTitle}
+              </h1>
+              ${headerSubtitle ? `
+              <p style="margin: 0; font-size: 13.5px; color: #cbd5e1; line-height: 1.5;">
+                ${headerSubtitle}
+              </p>` : ''}
+            </td>
+          </tr>
 
-        ${bodyContent}
+          <!-- 3. Email Body -->
+          <tr>
+            <td style="background-color: #ffffff; padding: 32px 32px; font-size: 14.5px; line-height: 1.65; color: #334155;">
+              
+              ${candidateName ? `
+              <p style="margin: 0 0 16px 0; font-size: 15px; font-weight: 600; color: #0f172a;">
+                Dear ${candidateName},
+              </p>` : ''}
 
-        <div style="border-top: 1px solid #1f293d; margin-top: 24px; padding-top: 16px; text-align: center; font-size: 11px; color: #64748b;">
-          Future Bound Tech • Innovation & Finance Systems • <a href="mailto:info@futureboundtech.online" style="color: #38bdf8; text-decoration: none;">info@futureboundtech.online</a> • Nellore, AP
-        </div>
-      </div>
-    </div>
+              ${customBodyHtml ? customBodyHtml : `
+                ${introContent ? `
+                <p style="margin: 0 0 20px 0; font-size: 14.5px; line-height: 1.65; color: #334155;">
+                  ${introContent}
+                </p>` : ''}
+
+                <!-- 4. Position Details (Subtle light-gray with indigo accent line) -->
+                ${(jobTitle || jobId) ? `
+                <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #4f46e5; border-radius: 6px; padding: 16px 20px; margin: 24px 0;">
+                  <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+                    ${jobTitle ? `
+                    <tr>
+                      <td style="padding: 4px 0; width: 100px; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">POSITION</td>
+                      <td style="padding: 4px 0; font-size: 14.5px; font-weight: 600; color: #0f172a;">${jobTitle} ${jobType ? `<span style="color: #64748b; font-weight: normal;">(${jobType})</span>` : ''}</td>
+                    </tr>` : ''}
+                    ${jobId ? `
+                    <tr>
+                      <td style="padding: 4px 0; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">JOB ID</td>
+                      <td style="padding: 4px 0; font-size: 13.5px; font-weight: 600; color: #4f46e5; font-family: monospace;">${jobId}</td>
+                    </tr>` : ''}
+                    ${applicationId ? `
+                    <tr>
+                      <td style="padding: 4px 0; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">REF ID</td>
+                      <td style="padding: 4px 0; font-size: 13px; font-weight: 500; color: #475569; font-family: monospace;">${applicationId}</td>
+                    </tr>` : ''}
+                  </table>
+                </div>` : ''}
+
+                ${extraDetailsHtml}
+
+                <!-- 5. Next Steps -->
+                ${nextStepsHtml ? `
+                <div style="margin: 24px 0 0 0;">
+                  <h3 style="margin: 0 0 8px 0; font-size: 15px; font-weight: 700; color: #0f172a;">Next Steps</h3>
+                  <p style="margin: 0 0 16px 0; font-size: 14px; line-height: 1.6; color: #334155;">
+                    ${nextStepsHtml}
+                  </p>
+                  <p style="margin: 0; font-size: 14px; line-height: 1.6; color: #334155;">
+                    We appreciate your time and interest in Future Bound Tech and look forward to speaking with you.
+                  </p>
+                </div>` : ''}
+              `}
+
+              <!-- 6. Signature -->
+              <div style="margin-top: 32px; padding-top: 20px; border-top: 1px solid #f1f5f9; font-size: 14px; color: #334155; line-height: 1.6;">
+                Regards,<br /><br />
+                <strong style="color: #0f172a;">Talent Acquisition Team</strong><br />
+                <span style="color: #64748b;">Future Bound Tech</span>
+              </div>
+            </td>
+          </tr>
+
+          <!-- 7. Footer -->
+          <tr>
+            <td style="background-color: #f8fafc; border-top: 1px solid #eaecf0; padding: 22px 32px; text-align: center; font-size: 12px; color: #64748b; line-height: 1.6;">
+              <strong style="color: #334155; font-size: 13px;">Future Bound Tech</strong><br />
+              Innovation & Finance Systems · Nellore, Andhra Pradesh<br /><br />
+              <a href="mailto:info@futureboundtech.online" style="color: #4f46e5; text-decoration: none; font-weight: 500;">info@futureboundtech.online</a> &nbsp;·&nbsp; <a href="https://www.futureboundtech.online" style="color: #4f46e5; text-decoration: none; font-weight: 500;">futureboundtech.online</a>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
   `;
 }
 
@@ -473,89 +631,57 @@ export async function handleJobApplicationEmails(application) {
     resumeUrl 
   } = application;
 
-  const candidateBodyContent = `
-    <p style="font-size: 14px; color: #f1f5f9; line-height: 1.6;">
-      Dear <strong style="color: #60a5fa;">${name}</strong>,
-    </p>
-
-    <p style="font-size: 14px; color: #cbd5e1; line-height: 1.6;">
-      Thank you for submitting your application for <strong>${jobTitle} (${jobType})</strong> position at Future Bound Tech. 
-      Your application has been logged into our hiring system.
-    </p>
-
-    <div style="background: #111827; padding: 18px; border-radius: 12px; border: 1px solid #374151; margin: 20px 0;">
-      <div style="margin-bottom: 12px; border-bottom: 1px solid #1f293d; padding-bottom: 10px;">
-        <span style="color: #94a3b8; font-size: 11px; font-weight: bold; uppercase; tracking-wider; display: block; margin-bottom: 2px;">Job ID Code</span>
-        <span style="color: #34d399; font-weight: bold; font-family: monospace; font-size: 18px;">${jobId}</span>
-      </div>
-
-      <div style="margin-bottom: 12px; border-bottom: 1px solid #1f293d; padding-bottom: 10px;">
-        <span style="color: #94a3b8; font-size: 11px; font-weight: bold; uppercase; tracking-wider; display: block; margin-bottom: 2px;">Application Reference ID</span>
-        <span style="color: #38bdf8; font-weight: bold; font-family: monospace; font-size: 14px;">${applicationId}</span>
-      </div>
-
-      <div>
-        <span style="color: #94a3b8; font-size: 11px; font-weight: bold; uppercase; tracking-wider; display: block; margin-bottom: 2px;">Application Status</span>
-        <span style="color: #fbbf24; font-weight: bold; font-size: 13px;">Applied (Under Review)</span>
-      </div>
-    </div>
-
-    <p style="font-size: 13px; color: #94a3b8; line-height: 1.6;">
-      Our technical recruiters will review your profile. You will receive real-time email notifications for shortlisted interview rounds and official offer letters.
-    </p>
-  `;
-
   const candidateHtml = renderCleanEmailHtml({
-    headerTitle: 'Application Received',
+    badgeLabel: 'APPLICATION CONFIRMATION',
+    headerTitle: 'Application successfully received.',
+    headerSubtitle: 'Thank you for your interest in joining Future Bound Tech.',
     candidateName: name,
-    bodyContent: candidateBodyContent,
+    introContent: `Thank you for submitting your application for the <strong>${jobTitle} (${jobType || 'Opportunity'})</strong> role at Future Bound Tech. Your profile has been logged into our hiring system.`,
     jobId,
     applicationId,
     jobTitle,
-    jobType
+    jobType,
+    nextStepsHtml: 'Our technical recruiters are reviewing your submitted credentials. You will receive updates via email regarding the outcome and next interaction rounds.'
   });
 
   const adminHtml = `
-    <div style="font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto; background: #0b0f19; color: #fff; padding: 25px; border-radius: 16px; border: 1px solid #1f293d;">
-      <div style="background: linear-gradient(135deg, #2563eb, #10b981); padding: 18px 22px; border-radius: 12px; margin-bottom: 20px;">
-        <h2 style="margin: 0; color: #fff; font-size: 18px;">🎯 New Job / Internship Application Received</h2>
-        <p style="margin: 4px 0 0 0; color: #d1fae5; font-size: 13px;">${jobType}: ${jobTitle} (${jobId})</p>
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 620px; margin: 0 auto; background: #ffffff; color: #0f172a; padding: 24px; border-radius: 8px; border: 1px solid #e2e8f0;">
+      <div style="background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 60%, #312e81 100%); padding: 18px 20px; border-radius: 6px; color: #fff; margin-bottom: 20px;">
+        <span style="font-size: 11px; font-weight: 700; letter-spacing: 1px; color: #a5b4fc; text-transform: uppercase;">ADMIN NOTIFICATION</span>
+        <h2 style="margin: 4px 0 0 0; color: #fff; font-size: 18px;">New Candidate Application Received</h2>
+        <p style="margin: 4px 0 0 0; color: #cbd5e1; font-size: 13px;">${jobType}: ${jobTitle} (${jobId})</p>
       </div>
 
-      <div style="background: #111827; padding: 15px; border-radius: 10px; border: 1px solid #374151; margin-bottom: 16px;">
-        <h3 style="margin: 0 0 10px 0; font-size: 13px; text-transform: uppercase; color: #60a5fa; letter-spacing: 0.5px;">Stage 1: Basic Details</h3>
-        <p style="margin: 4px 0; font-size: 13px; color: #cbd5e1;">👤 <strong>Candidate Name:</strong> <span style="color: #fff; font-weight: bold;">${name}</span></p>
-        <p style="margin: 4px 0; font-size: 13px; color: #cbd5e1;">✉️ <strong>Email:</strong> <a href="mailto:${email}" style="color: #38bdf8;">${email}</a></p>
-        <p style="margin: 4px 0; font-size: 13px; color: #cbd5e1;">📞 <strong>Phone:</strong> ${phone}</p>
-        <p style="margin: 4px 0; font-size: 13px; color: #cbd5e1;">📍 <strong>Place & Location:</strong> ${location}</p>
+      <div style="background: #f8fafc; padding: 14px 18px; border-radius: 6px; border: 1px solid #e2e8f0; margin-bottom: 14px;">
+        <h3 style="margin: 0 0 8px 0; font-size: 12px; text-transform: uppercase; color: #4f46e5; letter-spacing: 0.5px;">Candidate Contact Details</h3>
+        <p style="margin: 4px 0; font-size: 13.5px; color: #334155;"><strong>Name:</strong> ${name}</p>
+        <p style="margin: 4px 0; font-size: 13.5px; color: #334155;"><strong>Email:</strong> <a href="mailto:${email}" style="color: #4f46e5;">${email}</a></p>
+        <p style="margin: 4px 0; font-size: 13.5px; color: #334155;"><strong>Phone:</strong> ${phone}</p>
+        <p style="margin: 4px 0; font-size: 13.5px; color: #334155;"><strong>Location:</strong> ${location || 'N/A'}</p>
       </div>
 
-      <div style="background: #111827; padding: 15px; border-radius: 10px; border: 1px solid #374151; margin-bottom: 16px;">
-        <h3 style="margin: 0 0 10px 0; font-size: 13px; text-transform: uppercase; color: #a78bfa; letter-spacing: 0.5px;">Stage 2: Education & Experience</h3>
-        <p style="margin: 4px 0; font-size: 13px; color: #cbd5e1;">🎓 <strong>Highest Qualification:</strong> ${highestQualification}</p>
-        <p style="margin: 4px 0; font-size: 13px; color: #cbd5e1;">🏛️ <strong>College / University:</strong> ${collegeName}</p>
-        <p style="margin: 4px 0; font-size: 13px; color: #cbd5e1;">🔬 <strong>Sector / Stream:</strong> ${sector || 'N/A'}</p>
-        <p style="margin: 4px 0; font-size: 13px; color: #cbd5e1;">📌 <strong>Place of Education:</strong> ${placeOfEducation || 'N/A'}</p>
-        <p style="margin: 4px 0; font-size: 13px; color: #cbd5e1;">📊 <strong>Score / CGPA / %:</strong> ${score || 'N/A'}</p>
-        <p style="margin: 4px 0; font-size: 13px; color: #cbd5e1;">📅 <strong>Year of Completion:</strong> ${yearOfCompletion || 'N/A'}</p>
-        <p style="margin: 4px 0; font-size: 13px; color: #cbd5e1;">💼 <strong>Experience Details:</strong> ${jobExperienceDetails || 'Fresher'}</p>
+      <div style="background: #f8fafc; padding: 14px 18px; border-radius: 6px; border: 1px solid #e2e8f0; margin-bottom: 14px;">
+        <h3 style="margin: 0 0 8px 0; font-size: 12px; text-transform: uppercase; color: #4f46e5; letter-spacing: 0.5px;">Education & Experience</h3>
+        <p style="margin: 4px 0; font-size: 13.5px; color: #334155;"><strong>Qualification:</strong> ${highestQualification}</p>
+        <p style="margin: 4px 0; font-size: 13.5px; color: #334155;"><strong>University / College:</strong> ${collegeName}</p>
+        <p style="margin: 4px 0; font-size: 13.5px; color: #334155;"><strong>Stream / Score:</strong> ${sector || 'N/A'} (${score || 'N/A'})</p>
+        <p style="margin: 4px 0; font-size: 13.5px; color: #334155;"><strong>Year:</strong> ${yearOfCompletion || 'N/A'} | <strong>Experience:</strong> ${jobExperienceDetails || 'Fresher'}</p>
       </div>
 
-      <div style="background: #111827; padding: 15px; border-radius: 10px; border: 1px solid #374151; margin-bottom: 16px;">
-        <h3 style="margin: 0 0 10px 0; font-size: 13px; text-transform: uppercase; color: #34d399; letter-spacing: 0.5px;">Stage 3: Declaration</h3>
-        <p style="margin: 4px 0; font-size: 13px; color: #cbd5e1;">⚧️ <strong>Gender:</strong> ${gender || 'N/A'} | 🎂 <strong>DOB:</strong> ${dob || 'N/A'}</p>
-        ${resumeUrl ? `<p style="margin: 8px 0 0 0; font-size: 13px;">📄 <a href="${resumeUrl}" target="_blank" style="color: #38bdf8; font-weight: bold; text-decoration: underline;">View Candidate Resume</a></p>` : ''}
-      </div>
+      ${resumeUrl ? `
+      <div style="background: #f1f5f9; padding: 12px 18px; border-radius: 6px; margin-bottom: 18px; text-align: center;">
+        <a href="${resumeUrl}" target="_blank" style="color: #4f46e5; font-weight: 600; text-decoration: none; font-size: 13.5px;">📄 View Candidate Resume</a>
+      </div>` : ''}
 
-      <div style="margin-top: 20px; text-align: center;">
-        <a href="http://localhost:3000/admin-mb" style="background: #2563eb; color: #fff; padding: 10px 22px; border-radius: 8px; text-decoration: none; font-size: 12px; font-weight: bold; display: inline-block;">Manage Application in Admin Portal</a>
+      <div style="text-align: center; margin-top: 16px;">
+        <a href="https://www.futureboundtech.online/admin-mb" style="background: #4f46e5; color: #fff; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 600; display: inline-block;">Manage in Admin Portal</a>
       </div>
     </div>
   `;
 
   await Promise.all([
     sendEmail({ to: email, subject: `Application Received: ${jobTitle} (${jobType}) • Future Bound Tech [Job ID: ${jobId}]`, html: candidateHtml }),
-    sendEmail({ to: HOSTINGER_USER, subject: `💼 New Candidate for ${jobTitle} [${jobId}]: ${name}`, html: adminHtml, replyTo: email })
+    sendEmail({ to: HOSTINGER_USER, subject: `New Candidate for ${jobTitle} [${jobId}]: ${name}`, html: adminHtml, replyTo: email })
   ]);
 }
 
@@ -566,114 +692,198 @@ export async function handleApplicationStatusEmail({ application, newStatus, det
   const { name, email, jobTitle, jobType, jobId, applicationId } = application;
 
   let subject = '';
-  let statusBannerColor = '#2563eb';
-  let statusTitle = '';
-  let bodyContent = '';
+  let badgeLabel = 'RECRUITMENT UPDATE';
+  let headerTitle = 'Your application has been shortlisted.';
+  let headerSubtitle = 'We are pleased to invite you to the next stage of our selection process.';
+  let introContent = '';
+  let extraDetailsHtml = '';
+  let nextStepsHtml = '';
 
   if (newStatus === 'Shortlisted') {
-    subject = `🎉 Shortlisted: Your Application for ${jobTitle} at Future Bound Tech`;
-    statusBannerColor = '#7c3aed';
-    statusTitle = 'Profile Shortlisted';
-    bodyContent = `
-      <p style="font-size: 14px; color: #e2e8f0; line-height: 1.6;">
-        Dear <strong>${name}</strong>,<br /><br />
-        We are thrilled to inform you that following a detailed review of your credentials for the position of <strong>${jobTitle} (${jobType})</strong> [Job ID: ${jobId}], you have been <strong>Shortlisted</strong> for the next round of our selection process!
-      </p>
-      <div style="background: #111827; padding: 16px; border-radius: 12px; border: 1px solid #374151; margin: 18px 0; font-size: 13px; color: #cbd5e1; line-height: 1.6;">
-        <p style="margin: 4px 0; color: #a78bfa; font-weight: bold;">Next Steps:</p>
-        Our technical panel will schedule your interaction session shortly. Please keep your portfolio and project repository links accessible.
-      </div>
-    `;
+    subject = `Shortlisted: Your Application for ${jobTitle} at Future Bound Tech`;
+    badgeLabel = 'RECRUITMENT UPDATE';
+    headerTitle = 'Your application has been shortlisted.';
+    headerSubtitle = 'We are pleased to invite you to the next stage of our selection process.';
+    introContent = 'Thank you for your interest in joining Future Bound Tech. After reviewing your application and profile, we are happy to inform you that you have been shortlisted for the following opportunity:';
+    nextStepsHtml = 'Our technical panel will reach out shortly to schedule your interaction session. Please keep your portfolio, GitHub projects, and other relevant work samples accessible for discussion.';
   } else if (newStatus === 'Interview Scheduled') {
     const interviewDate = details.interviewDate || 'To be communicated';
     const interviewTime = details.interviewTime || '11:00 AM IST';
     const interviewLink = details.interviewLink || STATIC_MEET_LINK;
+    const isRescheduled = Boolean(details.isRescheduled);
 
-    subject = `📅 Interview Invitation: ${jobTitle} with Future Bound Tech (${interviewDate})`;
-    statusBannerColor = '#2563eb';
-    statusTitle = 'Interview Round Scheduled';
-    bodyContent = `
-      <p style="font-size: 14px; color: #e2e8f0; line-height: 1.6;">
-        Dear <strong>${name}</strong>,<br /><br />
-        Congratulations! You are invited to attend the technical interview round for the <strong>${jobTitle} (${jobType})</strong> position.
-      </p>
-      <div style="background: #111827; padding: 18px; border-radius: 12px; border: 1px solid #374151; margin: 18px 0; font-size: 13px;">
-        <p style="margin: 5px 0; color: #94a3b8;">📅 <strong>Date:</strong> <span style="color: #60a5fa; font-weight: bold;">${interviewDate}</span></p>
-        <p style="margin: 5px 0; color: #94a3b8;">⏰ <strong>Time:</strong> <span style="color: #34d399; font-weight: bold;">${interviewTime}</span></p>
-        <p style="margin: 5px 0; color: #94a3b8;">💼 <strong>Position:</strong> <span style="color: #fff;">${jobTitle} (${jobType})</span></p>
-        <div style="margin-top: 14px; padding: 12px; background: #064e3b; border-radius: 8px; border: 1px solid #059669;">
-          <span style="font-size: 11px; text-transform: uppercase; font-weight: bold; color: #a7f3d0; display: block; margin-bottom: 4px;">📹 Google Meet Room:</span>
-          <a href="${interviewLink}" target="_blank" style="color: #ffffff; font-family: monospace; font-size: 13px; text-decoration: underline; word-break: break-all;">
-            ${interviewLink}
-          </a>
+    if (isRescheduled) {
+      const rKey = details.rescheduleReasonKey || 'candidate_unavailable';
+      let reasonTitle = '';
+      let reasonExplanation = '';
+
+      if (rKey === 'candidate_unavailable') {
+        reasonTitle = 'Candidate Unavailable at Scheduled Slot';
+        reasonExplanation = 'As noted regarding your unavailability at the previously scheduled interview time, we understand that unexpected scheduling conflicts can occur. We are pleased to provide you with a revised interview slot so you can attend comfortably.';
+      } else if (rKey === 'candidate_tech_issue') {
+        reasonTitle = 'Technical / Network Connectivity Issues';
+        reasonExplanation = 'Due to the technical and connectivity challenges encountered during the previous discussion, our technical panel wants to ensure you receive a complete and fair opportunity to present your work. We have rescheduled your discussion to ensure a smooth, uninterrupted evaluation.';
+      } else if (rKey === 'hr_panel_unavailable') {
+        reasonTitle = 'Unavailability of HR & Technical Interview Panel';
+        reasonExplanation = 'Due to an unavoidable scheduling conflict and the urgent unavailability of our HR & Technical Interview Panel for the original slot, we have revised your interview timing. We sincerely apologize for any inconvenience caused to your personal schedule.';
+      } else {
+        reasonTitle = details.rescheduleReason || 'Updated Interview Schedule';
+        reasonExplanation = details.rescheduleReason 
+          ? `This interview session has been rescheduled: ${details.rescheduleReason}.`
+          : 'Due to updated scheduling requirements, we have arranged a revised interview session for you.';
+      }
+
+      subject = `Rescheduled: Technical Interview for ${jobTitle} - Future Bound Tech (${interviewDate})`;
+      badgeLabel = 'INTERVIEW RESCHEDULED';
+      headerTitle = 'Technical Interview Rescheduled';
+      headerSubtitle = 'Your technical interaction session has been moved to an updated time slot.';
+      introContent = `Hello ${name},<br /><br />Please be informed that your technical interview round for the <strong>${jobTitle} (${jobType})</strong> position has been rescheduled.<br /><br /><strong>Reason for Rescheduling:</strong><br />${reasonExplanation}`;
+
+      extraDetailsHtml = `
+        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px 24px; margin: 24px 0;">
+          <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+            <tr>
+              <td style="padding: 6px 0; width: 130px; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">ROLE</td>
+              <td style="padding: 6px 0; font-size: 14.5px; font-weight: 600; color: #0f172a;">${jobTitle} <span style="color: #64748b; font-weight: normal;">(${jobType})</span></td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 0; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">NEW DATE</td>
+              <td style="padding: 6px 0; font-size: 14px; font-weight: 700; color: #d97706;">${interviewDate}</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 0; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">NEW TIME</td>
+              <td style="padding: 6px 0; font-size: 14px; font-weight: 600; color: #0f172a;">${interviewTime}</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 0; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">MEETING ROOM</td>
+              <td style="padding: 6px 0;">
+                <a href="${interviewLink}" target="_blank" style="color: #4f46e5; font-weight: 600; text-decoration: underline; font-size: 13.5px; font-family: monospace;">
+                  ${interviewLink}
+                </a>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 0; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">REASON</td>
+              <td style="padding: 6px 0; font-size: 13px; font-weight: 600; color: #475569;">${reasonTitle}</td>
+            </tr>
+          </table>
         </div>
-      </div>
-      <p style="font-size: 12px; color: #94a3b8;">Please ensure a stable internet connection and join the room 5 minutes prior to your slot.</p>
-    `;
+      `;
+
+      nextStepsHtml = 'Please ensure a quiet environment, a stable internet connection, and join the video room 5 minutes prior to your new scheduled slot.<br /><br />If this revised timing conflicts with your schedule, simply reply directly to this email with your preferred alternate time slots and our talent acquisition team will accommodate you.';
+    } else {
+      subject = `Interview Invitation: ${jobTitle} with Future Bound Tech (${interviewDate})`;
+      badgeLabel = 'INTERVIEW INVITATION';
+      headerTitle = 'Technical Interview Scheduled';
+      headerSubtitle = 'You are invited to attend a technical interaction session.';
+      introContent = `Congratulations! We are pleased to invite you to the technical interview round for the <strong>${jobTitle} (${jobType})</strong> position.`;
+      
+      extraDetailsHtml = `
+        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 18px 20px; margin: 20px 0;">
+          <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+            <tr>
+              <td style="padding: 4px 0; width: 100px; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase;">DATE</td>
+              <td style="padding: 4px 0; font-size: 14px; font-weight: 600; color: #0f172a;">${interviewDate}</td>
+            </tr>
+            <tr>
+              <td style="padding: 4px 0; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase;">TIME</td>
+              <td style="padding: 4px 0; font-size: 14px; font-weight: 600; color: #0f172a;">${interviewTime}</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 0 0 0; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase;">MEETING ROOM</td>
+              <td style="padding: 6px 0 0 0;">
+                <a href="${interviewLink}" target="_blank" style="color: #4f46e5; font-weight: 600; text-decoration: underline; font-size: 13.5px; font-family: monospace;">
+                  ${interviewLink}
+                </a>
+              </td>
+            </tr>
+          </table>
+        </div>
+      `;
+      nextStepsHtml = 'Please ensure a quiet environment, a stable internet connection, and join the video room 5 minutes prior to your allocated slot.';
+    }
   } else if (newStatus === 'Hired') {
     const offerId = details.offerId || `FBT-${jobType === 'Internship' ? '01I' : '01J'}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
     const joiningDate = details.joiningDate || 'Immediate';
     const compensation = details.compensation || 'As discussed during interview';
 
-    subject = `🎉 Offer Letter of Selection: ${jobTitle} • Future Bound Tech [Offer ID: ${offerId}]`;
-    statusBannerColor = '#059669';
-    statusTitle = 'Official Selection & Offer';
-    bodyContent = `
-      <p style="font-size: 14px; color: #e2e8f0; line-height: 1.6;">
-        Dear <strong>${name}</strong>,<br /><br />
-        Congratulations! On behalf of <strong>Future Bound Tech</strong>, we are delighted to offer you the position of <strong>${jobTitle} (${jobType})</strong>. Your exceptional technical skills and commitment make you a fantastic fit for our organization.
-      </p>
-      <div style="background: #0f172a; padding: 20px; border-radius: 14px; border: 2px solid #10b981; margin: 20px 0; font-size: 13px;">
-        <div style="text-align: center; margin-bottom: 15px;">
-          <span style="background: #065f46; color: #a7f3d0; font-size: 11px; text-transform: uppercase; font-weight: bold; padding: 4px 12px; border-radius: 20px; letter-spacing: 1px;">Official Verification Record</span>
-          <h3 style="margin: 8px 0 0 0; color: #34d399; font-family: monospace; font-size: 18px; letter-spacing: 1px;">Offer ID: ${offerId}</h3>
-        </div>
-        <table style="width: 100%; font-size: 13px; color: #cbd5e1; border-collapse: collapse;">
-          <tr style="border-bottom: 1px solid #334155;"><td style="padding: 6px 0; color: #94a3b8;">Selected Role:</td><td style="color: #fff; font-weight: bold;">${jobTitle}</td></tr>
-          <tr style="border-bottom: 1px solid #334155;"><td style="padding: 6px 0; color: #94a3b8;">Designation Type:</td><td style="color: #fff;">${jobType}</td></tr>
-          <tr style="border-bottom: 1px solid #334155;"><td style="padding: 6px 0; color: #94a3b8;">Joining Date:</td><td style="color: #60a5fa; font-weight: bold;">${joiningDate}</td></tr>
-          <tr style="border-bottom: 1px solid #334155;"><td style="padding: 6px 0; color: #94a3b8;">Terms / Stipend:</td><td style="color: #34d399;">${compensation}</td></tr>
+    subject = `Congratulations! Offer Letter for ${jobTitle} - Future Bound Tech`;
+    badgeLabel = 'OFFICIAL SELECTION';
+    headerTitle = 'Official Offer of Selection';
+    headerSubtitle = 'Congratulations and welcome to the Future Bound Tech team.';
+    introContent = `On behalf of Future Bound Tech, we are delighted to extend an official offer of selection for the position of <strong>${jobTitle} (${jobType})</strong>. Your technical acumen and dedication make you an exceptional addition to our team.`;
+
+    const hasOfferPdf = Boolean(details.offerPdf && details.offerPdf.content);
+    const pdfFilename = details.offerPdf?.filename || `Offer_Letter_${offerId}.pdf`;
+
+    extraDetailsHtml = `
+      <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px 24px; margin: 24px 0;">
+        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+          <tr>
+            <td style="padding: 6px 0; width: 130px; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">ROLE</td>
+            <td style="padding: 6px 0; font-size: 14.5px; font-weight: 600; color: #0f172a;">${jobTitle} ${jobType ? `<span style="color: #64748b; font-weight: normal;">(${jobType})</span>` : ''}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">OFFER ID</td>
+            <td style="padding: 6px 0; font-size: 14px; font-weight: 700; color: #059669; font-family: monospace;">${offerId}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">JOINING DATE</td>
+            <td style="padding: 6px 0; font-size: 14px; font-weight: 600; color: #0f172a;">${joiningDate}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">TERMS / STIPEND</td>
+            <td style="padding: 6px 0; font-size: 14px; font-weight: 600; color: #0f172a;">${compensation}</td>
+          </tr>
         </table>
-        <div style="margin-top: 15px; padding: 10px; background: #1e293b; border-radius: 8px; font-size: 12px; color: #94a3b8; text-align: center;">
-          🔒 You or your institution can verify the authenticity of this offer letter online at any time on our official portal under <strong>Careers &gt; Verify Offer ID</strong>.
+        ${hasOfferPdf ? `
+        <div style="margin-top: 16px; padding: 12px 16px; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 13px; color: #334155; line-height: 1.5;">
+          📎 <strong>Attached Document:</strong> Your official signed Offer Letter is attached to this email in PDF format (<code>${pdfFilename}</code>).
+        </div>` : ''}
+        <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid #e2e8f0; font-size: 11.5px; color: #64748b;">
+          Online Authenticity Verification is available on our official portal under <strong>Careers &gt; Verify Offer ID</strong>.
         </div>
       </div>
-      <p style="font-size: 13px; color: #e2e8f0; line-height: 1.6;">
-        Please reply to this email with your formal acceptance within 48 hours to confirm your joining.
-      </p>
     `;
+    nextStepsHtml = 'Please review the attached Offer Letter PDF and reply directly to this email with your formal acceptance within 48 hours to confirm your joining.';
   } else if (newStatus === 'Dropped') {
     subject = `Application Update: ${jobTitle} • Future Bound Tech`;
-    statusBannerColor = '#475569';
-    statusTitle = 'Application Status Update';
-    bodyContent = `
-      <p style="font-size: 14px; color: #e2e8f0; line-height: 1.6;">
-        Dear <strong>${name}</strong>,<br /><br />
-        Thank you for your interest in Future Bound Tech and taking the time to apply for the <strong>${jobTitle} (${jobType})</strong> position.
-      </p>
-      <p style="font-size: 14px; color: #cbd5e1; line-height: 1.6;">
-        After careful consideration of all applicants, we have decided to move forward with other candidates whose profiles more closely align with the immediate requirements for this specific role.
-      </p>
-      <p style="font-size: 13px; color: #94a3b8; line-height: 1.6;">
-        We were genuinely impressed with your credentials and will keep your profile in our talent pool for future openings that match your skills. We wish you the very best in your professional journey.
-      </p>
-    `;
+    badgeLabel = 'RECRUITMENT UPDATE';
+    headerTitle = 'Application Status Update';
+    headerSubtitle = 'Thank you for your interest in Future Bound Tech.';
+    introContent = `Thank you for taking the time to apply for the <strong>${jobTitle} (${jobType})</strong> role and for your interest in joining our organization.<br /><br />After careful review of all applicants, our hiring team has decided to proceed with other profiles whose current experience more closely matches the immediate requirements for this opening.<br /><br />We were genuinely impressed by your credentials and will maintain your profile in our talent pool for future opportunities.`;
+    nextStepsHtml = 'We sincerely appreciate your effort and wish you the very best in your career pursuits.';
   }
 
+  // When Hired or Rescheduled, exclude jobId and applicationId from the header box to keep layout clean
   const emailHtml = renderCleanEmailHtml({
-    headerTitle: statusTitle,
+    badgeLabel,
+    headerTitle,
+    headerSubtitle,
     candidateName: name,
-    bodyContent,
-    jobId,
-    applicationId,
-    jobTitle,
-    jobType
+    introContent,
+    jobId: (newStatus === 'Hired' || details.isRescheduled) ? '' : jobId,
+    applicationId: (newStatus === 'Hired' || details.isRescheduled) ? '' : applicationId,
+    jobTitle: (newStatus === 'Hired' || details.isRescheduled) ? '' : jobTitle,
+    jobType: (newStatus === 'Hired' || details.isRescheduled) ? '' : jobType,
+    extraDetailsHtml,
+    nextStepsHtml
   });
+
+  const attachments = [];
+  if (details.offerPdf && details.offerPdf.content) {
+    attachments.push({
+      filename: details.offerPdf.filename || `Offer_Letter_${details.offerId || 'Official'}.pdf`,
+      content: details.offerPdf.content,
+      contentType: 'application/pdf'
+    });
+  }
 
   return sendEmail({
     to: email,
     subject,
-    html: emailHtml
+    html: emailHtml,
+    attachments
   });
 }
 
@@ -715,8 +925,29 @@ Best regards,
 Talent Acquisition Team
 Future Bound Tech (info@futureboundtech.online)`;
   } else if (status === 'Interview Scheduled') {
-    subject = `📅 Interview Invitation: ${jobTitle} with Future Bound Tech (${interviewDate})`;
-    body = `Dear ${name},
+    if (details.isRescheduled) {
+      const reason = details.rescheduleReason || 'Scheduling adjustment';
+      subject = `Rescheduled: Technical Interview for ${jobTitle} - Future Bound Tech (${interviewDate})`;
+      body = `Dear ${name},
+
+Please be informed that your technical interview round for ${jobTitle} (${jobType}) has been rescheduled.
+
+Reason for Rescheduling:
+${reason}
+
+Updated Interview Details:
+- Revised Date: ${interviewDate}
+- Revised Time: ${interviewTime}
+- Google Meet Link: ${meetLink}
+
+Please join 5 minutes before your scheduled slot. If this revised timing is inconvenient, please reply directly to this email to coordinate an alternate time.
+
+Best regards,
+Hiring & Technical Panel
+Future Bound Tech`;
+    } else {
+      subject = `📅 Interview Invitation: ${jobTitle} with Future Bound Tech (${interviewDate})`;
+      body = `Dear ${name},
 
 We are pleased to invite you for the technical interview for ${jobTitle} (${jobType}).
 
@@ -730,8 +961,9 @@ Please join 5 minutes before your scheduled slot.
 Best regards,
 Hiring & Technical Panel
 Future Bound Tech`;
+    }
   } else if (status === 'Hired') {
-    subject = `🎉 Offer Letter of Selection: ${jobTitle} • Future Bound Tech [Offer ID: ${offerId}]`;
+    subject = `Congratulations! Offer Letter for ${jobTitle} - Future Bound Tech`;
     body = `Dear ${name},
 
 Congratulations! We are thrilled to offer you the position of ${jobTitle} (${jobType}) at Future Bound Tech.
@@ -866,3 +1098,529 @@ export async function handleContactEmails(contactData) {
     sendEmail({ to: HOSTINGER_USER, subject: `💬 Contact Lead: ${name} - ${subject}`, html: adminHtml, replyTo: email })
   ]);
 }
+
+// ==========================================
+// 7. BROADCAST JOB OPPORTUNITY UPDATES WITH AI
+// ==========================================
+
+/**
+ * Extract Direct Application URL from Raw Notes
+ * Safeguard: Identifies and preserves original application links independently of AI model.
+ */
+export function extractOriginalApplicationUrl(rawText) {
+  if (!rawText) return null;
+  const urlRegex = /(https?:\/\/[^\s<>"')]+)/gi;
+  const matches = rawText.match(urlRegex);
+  if (matches && matches.length > 0) {
+    const external = matches.find(u => !u.includes('futureboundtech.online') && !u.includes('meet.google.com'));
+    return (external || matches[0]).replace(/[.,;:)\]]+$/, '');
+  }
+  return null;
+}
+
+/**
+ * Sanitize AI Generated Plain Text to remove any accidental meta headers
+ */
+export function sanitizeEnhancedMessage(text) {
+  if (!text) return '';
+  return text
+    .replace(/\*{2,}\s*content\s*\*{2,}:?/gi, '')
+    .replace(/^#+\s*content:?/gim, '')
+    .replace(/\*{2,}\s*core message\s*\*{2,}:?/gi, '')
+    .replace(/^#+\s*core message:?/gim, '')
+    .replace(/\*{2,}\s*introduction\s*\*{2,}:?/gi, '')
+    .replace(/^#+\s*introduction:?/gim, '')
+    .replace(/\*{2,}\s*next steps\s*\*{2,}:?/gi, '')
+    .replace(/^#+\s*next steps:?/gim, '')
+    .replace(/\*{2,}\s*message body\s*\*{2,}:?/gi, '')
+    .replace(/^#+\s*message body:?/gim, '')
+    .replace(/\*{2,}\s*generated email\s*\*{2,}:?/gi, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/**
+ * Production-Ready System Prompt for AI Job Opportunity Broadcast Email Assistant
+ */
+export const JOB_ALERT_SYSTEM_PROMPT = `You are the AI Job Opportunity Broadcast Email Assistant for Future Bound Tech (FBT).
+
+## 1. YOUR ROLE
+Your job is to transform raw job alerts, hiring announcements, off-campus drive notes, recruitment messages, and job descriptions into clean, professional, candidate-facing broadcast emails.
+FBT shares curated opportunities from external employers. FBT is NOT the hiring company unless the input explicitly states that FBT itself is hiring.
+Examples of external employers include Salesforce, Google, Microsoft, TCS, Amazon, and other companies.
+Never describe an external job opportunity as a job opening at Future Bound Tech. Attribute the vacancy to the employer named in the supplied information.
+
+## 2. PRIMARY OBJECTIVE
+Produce one ready-to-send job opportunity email structured in JSON with:
+- A concise, relevant subject line (e.g. "Job Alert: [Company] [Role] ([Batch], if confirmed)").
+- A professional email heading (e.g. "Software Engineering Opportunity at [Company]").
+- The greeting "Dear [Candidate Name],"
+- A brief introduction explaining the opportunity.
+- Clearly organised job details.
+- Eligibility and preferred skills, where provided.
+- A prominent "Apply Now" call to action with the original application URL.
+- A concise disclaimer encouraging candidates to verify details on the official careers page.
+- A professional sign-off from "Future Bound Tech — Talent Team".
+
+The email must be ready to send without manual rewriting.
+
+## 3. CONTENT RULES
+A. Employer and role:
+- Identify the actual hiring company and job title from the supplied notes.
+- Keep the employer's name distinct from Future Bound Tech.
+- Do not claim that FBT is hiring for external employer roles.
+- Do not invent a company, job title, location, salary, batch, deadline, or eligibility criterion.
+
+B. Eligibility and skills:
+- Preserve all supplied eligibility requirements accurately.
+- Include graduation batch, degree, CGPA, backlog criteria, experience, and location only when provided or reliably verified in the input.
+- Separate mandatory eligibility requirements from preferred skills.
+- If a detail is missing, omit it or use null in the structured output.
+
+C. Accuracy and uncertainty:
+- Treat supplied notes as the primary source.
+- Do not claim that a vacancy is active, verified, or accepting applications unless the input provides reliable confirmation.
+- Never invent an application deadline or salary.
+- Always include an appropriate caution in the disclaimer asking candidates to verify availability on the official employer careers page.
+
+D. Application links:
+- Preserve the exact original application URL, including its path and query parameters.
+- Do not shorten, rewrite, replace, guess, or remove the URL.
+
+E. Prohibited output:
+- Never add meta-headings such as "Content", "** Content **", "Introduction", "Generated Email", "AI Response", "Email Draft", or "Output".
+- Output strict JSON only matching the schema. No markdown fences or text outside the required JSON object.`;
+
+/**
+ * AI Message Enhancer & Structured Job Opportunity Generator
+ */
+export async function enhanceJobMessageAI({ rawContent, context = '' }) {
+  if (!rawContent || !rawContent.trim()) {
+    throw new Error('Raw message content is required');
+  }
+
+  // Pre-extract original application URL to safeguard against model alteration
+  const originalUrl = extractOriginalApplicationUrl(rawContent);
+
+  const userPrompt = `Transform the following raw job notes into the structured JSON object:
+
+RAW NOTES:
+"""
+${rawContent.trim()}
+"""
+${context ? `ADDITIONAL CONTEXT: ${context}` : ''}
+${originalUrl ? `ORIGINAL APPLICATION LINK DETECTED: ${originalUrl}` : ''}
+
+Respond ONLY in strict, valid JSON format matching this schema without markdown code fences or backticks:
+{
+  "subject": "string",
+  "heading": "string",
+  "greeting": "Dear [Candidate Name],",
+  "introduction": "string",
+  "company": "string or null",
+  "role": "string or null",
+  "location": ["string"],
+  "eligible_batch": "string or null",
+  "employment_type": "string or null",
+  "experience": "string or null",
+  "eligibility": ["string"],
+  "key_skills": ["string"],
+  "application_deadline": "string or null",
+  "cta_label": "Apply Now",
+  "application_url": ${originalUrl ? JSON.stringify(originalUrl) : "string or null"},
+  "disclaimer": "string",
+  "sign_off": "Best regards,\\nFuture Bound Tech — Talent Team",
+  "plain_text_body": "string"
+}`;
+
+  let rawAiResponse = await generateAIContent(userPrompt, JOB_ALERT_SYSTEM_PROMPT);
+
+  if (rawAiResponse) {
+    try {
+      let cleaned = rawAiResponse.trim();
+      if (cleaned.startsWith('```json')) {
+        cleaned = cleaned.replace(/^```json\s*/i, '').replace(/\s*```$/, '');
+      } else if (cleaned.startsWith('```')) {
+        cleaned = cleaned.replace(/^```\s*/, '').replace(/\s*```$/, '');
+      }
+      const parsed = JSON.parse(cleaned);
+
+      // Safeguard: Ensure original URL is preserved
+      if (originalUrl && (!parsed.application_url || parsed.application_url.length < 10)) {
+        parsed.application_url = originalUrl;
+      }
+
+      // Safeguard: Sanitize plain text body
+      let plainText = parsed.plain_text_body ? sanitizeEnhancedMessage(parsed.plain_text_body) : '';
+      if (!plainText || plainText.length < 50) {
+        // Construct clean plain text body from structured fields
+        const locStr = Array.isArray(parsed.location) ? parsed.location.join(' / ') : (parsed.location || 'See details');
+        const eligStr = Array.isArray(parsed.eligibility) && parsed.eligibility.length > 0 
+          ? parsed.eligibility.map(e => `- ${e}`).join('\n') 
+          : '- Refer to official listing for full criteria';
+        const skillsStr = Array.isArray(parsed.key_skills) && parsed.key_skills.length > 0 
+          ? parsed.key_skills.map(s => `- ${s}`).join('\n') 
+          : '';
+
+        plainText = `Dear [Candidate Name],
+
+${parsed.introduction || 'We are sharing a verified job opportunity that matches your potential profile.'}
+
+OPPORTUNITY DETAILS:
+- Company: ${parsed.company || 'Not Specified'}
+- Role: ${parsed.role || 'Software Engineering'}
+- Location: ${locStr}
+${parsed.eligible_batch ? `- Eligible Batch: ${parsed.eligible_batch}\n` : ''}${parsed.employment_type ? `- Employment Type: ${parsed.employment_type}\n` : ''}${parsed.experience ? `- Experience: ${parsed.experience}\n` : ''}
+ELIGIBILITY REQUIREMENTS:
+${eligStr}
+
+${skillsStr ? `KEY SKILLS:\n${skillsStr}\n` : ''}
+APPLY HERE:
+${parsed.application_url || originalUrl || 'Check official employer careers portal'}
+
+IMPORTANT:
+${parsed.disclaimer || 'Please verify the eligibility criteria, application deadline, and availability on the employer official careers page before applying.'}
+
+Best regards,
+Future Bound Tech — Talent Team`;
+      }
+
+      return {
+        subject: parsed.subject || parsed.heading || 'Job Opportunity Alert • Future Bound Tech',
+        heading: parsed.heading || parsed.subject || 'Job Opportunity Alert • Future Bound Tech',
+        enhancedMessage: plainText,
+        structuredData: {
+          ...parsed,
+          application_url: parsed.application_url || originalUrl,
+          plain_text_body: plainText
+        }
+      };
+    } catch (parseErr) {
+      console.warn('⚠️ Could not parse AI JSON output directly, attempting fallback extraction:', parseErr.message);
+    }
+  }
+
+  // Fallback if AI response failed or was malformed
+  const firstLine = rawContent.trim().split('\n')[0].replace(/^[#*-🚀📌🏢📍🎓🔗]\s*/, '').slice(0, 70);
+  const fallbackHeading = firstLine.length > 10 
+    ? `Job Alert: ${firstLine}` 
+    : `Curated Job Opportunity Alert • Future Bound Tech`;
+
+  const fallbackBody = `Dear [Candidate Name],
+
+We are sharing the following curated career opportunity with you:
+
+${sanitizeEnhancedMessage(rawContent.trim())}
+
+${originalUrl ? `Apply directly using the official link:\n${originalUrl}\n\n` : ''}IMPORTANT: Please verify all eligibility requirements, application deadlines, and availability on the employer's official website before applying.
+
+Best regards,
+Future Bound Tech — Talent Team`;
+
+  return {
+    subject: fallbackHeading,
+    heading: fallbackHeading,
+    enhancedMessage: fallbackBody,
+    structuredData: {
+      subject: fallbackHeading,
+      heading: fallbackHeading,
+      company: 'External Employer',
+      role: 'Software Opportunity',
+      application_url: originalUrl,
+      plain_text_body: fallbackBody
+    }
+  };
+}
+
+/**
+ * Render Branded HTML Email for Job Opportunity Broadcast Updates
+ */
+export function renderJobUpdateEmailHtml({ heading, candidateName, messageContent, attachments = [], structuredData = null }) {
+  const safeName = candidateName && candidateName.trim() ? candidateName.trim() : 'Candidate';
+  
+  // Extract application URL if available from structuredData or text
+  const appUrl = structuredData?.application_url || extractOriginalApplicationUrl(messageContent);
+  const company = structuredData?.company;
+  const role = structuredData?.role;
+  const location = Array.isArray(structuredData?.location) ? structuredData.location.join(' / ') : structuredData?.location;
+  const batch = structuredData?.eligible_batch;
+  const eligibility = Array.isArray(structuredData?.eligibility) ? structuredData.eligibility : [];
+  const skills = Array.isArray(structuredData?.key_skills) ? structuredData.key_skills : [];
+  const disclaimer = structuredData?.disclaimer;
+
+  let formattedBody = messageContent || '';
+  // Sanitize any residual ** Content ** or **Content:**
+  formattedBody = sanitizeEnhancedMessage(formattedBody);
+  
+  // Replace [Candidate Name] with safeName if present
+  formattedBody = formattedBody.replace(/\[Candidate Name\]/gi, safeName);
+  
+  const paragraphs = formattedBody.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
+  const formattedHtml = paragraphs.map(p => {
+    if (p.includes('\n- ') || p.includes('\n* ') || p.startsWith('- ') || p.startsWith('* ')) {
+      const lines = p.split('\n');
+      const listItems = lines
+        .map(l => l.replace(/^[-*]\s*/, '').trim())
+        .filter(Boolean)
+        .map(item => `<li style="margin-bottom: 6px; color: #334155;">${item}</li>`)
+        .join('');
+      return `<ul style="margin: 14px 0 18px 20px; padding: 0; font-size: 14px; line-height: 1.6;">${listItems}</ul>`;
+    }
+    const boldFormatted = p
+      .replace(/\*\*(.*?)\*\*/g, '<strong style="color: #0f172a;">$1</strong>')
+      .replace(/\n/g, '<br />');
+    return `<p style="margin: 0 0 16px 0; font-size: 14.5px; line-height: 1.65; color: #334155;">${boldFormatted}</p>`;
+  }).join('');
+
+  // Structured Opportunity Overview Card (if structured details are available)
+  let opportunityCardHtml = '';
+  if (company || role || location || batch) {
+    opportunityCardHtml = `
+      <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; margin: 24px 0;">
+        <span style="font-size: 11px; font-weight: 700; color: #4f46e5; text-transform: uppercase; letter-spacing: 0.8px; display: block; margin-bottom: 12px;">
+          ✦ Opportunity Snapshot
+        </span>
+        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="font-size: 13.5px; color: #1e293b; line-height: 1.7;">
+          ${company ? `<tr><td style="padding: 4px 0; color: #64748b; width: 130px; font-weight: 600;">🏢 Employer:</td><td style="padding: 4px 0; font-weight: 700; color: #0f172a;">${company}</td></tr>` : ''}
+          ${role ? `<tr><td style="padding: 4px 0; color: #64748b; font-weight: 600;">💼 Role:</td><td style="padding: 4px 0; font-weight: 600; color: #0f172a;">${role}</td></tr>` : ''}
+          ${location ? `<tr><td style="padding: 4px 0; color: #64748b; font-weight: 600;">📍 Location:</td><td style="padding: 4px 0; color: #334155;">${location}</td></tr>` : ''}
+          ${batch ? `<tr><td style="padding: 4px 0; color: #64748b; font-weight: 600;">🎓 Eligible Batch:</td><td style="padding: 4px 0; color: #047857; font-weight: 700;">${batch}</td></tr>` : ''}
+        </table>
+      </div>
+    `;
+  }
+
+  // Structured Eligibility & Skills Box
+  let eligibilityHtml = '';
+  if (eligibility.length > 0 || skills.length > 0) {
+    eligibilityHtml = `
+      <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 18px 20px; margin: 20px 0;">
+        ${eligibility.length > 0 ? `
+          <strong style="font-size: 12px; color: #166534; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 8px;">
+            ✓ Eligibility Criteria
+          </strong>
+          <ul style="margin: 0 0 14px 18px; padding: 0; font-size: 13.5px; color: #14532d; line-height: 1.6;">
+            ${eligibility.map(e => `<li style="margin-bottom: 4px;">${e}</li>`).join('')}
+          </ul>
+        ` : ''}
+        ${skills.length > 0 ? `
+          <strong style="font-size: 12px; color: #166534; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 8px;">
+            ⚡ Key Skills
+          </strong>
+          <div style="font-size: 13px; color: #14532d; line-height: 1.6;">
+            ${skills.map(s => `<span style="display: inline-block; background-color: #dcfce7; color: #166534; border: 1px solid #86efac; border-radius: 6px; padding: 2px 8px; margin: 2px 4px 2px 0; font-size: 12px; font-weight: 600;">${s}</span>`).join('')}
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }
+
+  // Prominent Apply Now CTA Button
+  let ctaHtml = '';
+  if (appUrl) {
+    ctaHtml = `
+      <div style="text-align: center; margin: 32px 0 24px 0;">
+        <a href="${appUrl}" target="_blank" style="display: inline-block; background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%); color: #ffffff; text-decoration: none; padding: 14px 36px; border-radius: 10px; font-weight: 700; font-size: 15px; letter-spacing: 0.3px; box-shadow: 0 4px 14px rgba(79, 70, 229, 0.35);">
+          Apply Now &rarr;
+        </a>
+        <div style="margin-top: 10px; font-size: 11px; color: #64748b;">
+          Application Link: <a href="${appUrl}" target="_blank" style="color: #4f46e5; text-decoration: underline; word-break: break-all;">${appUrl}</a>
+        </div>
+      </div>
+    `;
+  }
+
+  // Disclaimer Box
+  const disclaimerText = disclaimer || 'Please verify the eligibility criteria, application deadline, and listing availability on the official employer careers page before applying.';
+  const disclaimerHtml = `
+    <div style="background-color: #fffbeb; border: 1px solid #fef3c7; border-left: 4px solid #f59e0b; border-radius: 8px; padding: 14px 18px; margin: 24px 0; font-size: 12px; color: #92400e; line-height: 1.6;">
+      <strong>Important Notice:</strong> ${disclaimerText}
+    </div>
+  `;
+
+  // Attachments Section
+  let attachmentsHtml = '';
+  if (attachments && attachments.length > 0) {
+    const listHtml = attachments.map(att => {
+      const sizeStr = att.size ? ` (${Math.round(att.size / 1024)} KB)` : '';
+      return `<li style="margin: 4px 0; color: #1e293b; font-weight: 500;">📎 <strong>${att.filename || att.name || 'Document'}</strong>${sizeStr}</li>`;
+    }).join('');
+
+    attachmentsHtml = `
+      <div style="background-color: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 8px; padding: 14px 18px; margin: 22px 0;">
+        <span style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">
+          Enclosed Attachments (${attachments.length})
+        </span>
+        <ul style="margin: 0 0 0 16px; padding: 0; font-size: 13px;">
+          ${listHtml}
+        </ul>
+        <span style="font-size: 11px; color: #64748b; margin-top: 6px; display: block;">
+          Files are attached directly to this email for your review.
+        </span>
+      </div>
+    `;
+  }
+
+  return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${heading}</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; color: #334155;">
+  <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f8fafc; padding: 32px 16px;">
+    <tr>
+      <td align="center">
+        <!-- Main Container -->
+        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 620px; background-color: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+          
+          <!-- 1. Header (Logo + Company Name) -->
+          <tr>
+            <td style="background-color: #ffffff; padding: 20px 32px; border-bottom: 1px solid #eaecf0;">
+              <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+                <tr>
+                  <td style="vertical-align: middle;">
+                    <table role="presentation" border="0" cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td style="vertical-align: middle; padding-right: 12px;">
+                          <img src="${COMPANY_LOGO_URL}" alt="Future Bound Tech Logo" height="34" style="height: 34px; width: auto; display: block; border: 0;" />
+                        </td>
+                        <td style="vertical-align: middle;">
+                          <span style="font-size: 16px; font-weight: 700; color: #0f172a; letter-spacing: -0.2px; display: block; line-height: 1.2;">Future Bound Tech</span>
+                          <span style="font-size: 11px; color: #64748b; font-weight: 500; display: block;">Talent Acquisition & Career Opportunities</span>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                  <td align="right" style="vertical-align: middle;">
+                    <span style="font-size: 11px; font-weight: 700; color: #4f46e5; background: #eef2ff; padding: 4px 10px; border-radius: 12px; text-transform: uppercase; letter-spacing: 0.5px;">CAREER UPDATE</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- 2. Hero Section (Gradient Banner) -->
+          <tr>
+            <td style="background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 55%, #4338ca 100%); padding: 30px 32px; color: #ffffff;">
+              <span style="font-size: 11px; font-weight: 700; letter-spacing: 1.5px; color: #a5b4fc; text-transform: uppercase; display: block; margin-bottom: 8px;">
+                OPPORTUNITY ANNOUNCEMENT
+              </span>
+              <h1 style="margin: 0; font-size: 20px; font-weight: 700; color: #ffffff; line-height: 1.35;">
+                ${heading}
+              </h1>
+            </td>
+          </tr>
+
+          <!-- 3. Email Body -->
+          <tr>
+            <td style="background-color: #ffffff; padding: 32px 32px; font-size: 14.5px; line-height: 1.65; color: #334155;">
+              ${opportunityCardHtml}
+
+              ${eligibilityHtml}
+
+              ${formattedHtml}
+
+              ${ctaHtml}
+
+              ${disclaimerHtml}
+
+              ${attachmentsHtml}
+
+              <!-- Signature -->
+              <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9; font-size: 14px; color: #334155; line-height: 1.6;">
+                Best regards,<br /><br />
+                <strong style="color: #0f172a;">Future Bound Tech — Talent Team</strong><br />
+                <span style="color: #64748b;">Career Updates & Talent Systems</span>
+              </div>
+            </td>
+          </tr>
+
+          <!-- 4. Footer -->
+          <tr>
+            <td style="background-color: #f8fafc; border-top: 1px solid #eaecf0; padding: 22px 32px; text-align: center; font-size: 12px; color: #64748b; line-height: 1.6;">
+              <strong style="color: #334155; font-size: 13px;">Future Bound Tech</strong><br />
+              Enterprise Solutions & Talent Systems · Nellore, Andhra Pradesh<br /><br />
+              <a href="mailto:info@futureboundtech.online" style="color: #4f46e5; text-decoration: none; font-weight: 500;">info@futureboundtech.online</a> &nbsp;·&nbsp; <a href="https://www.futureboundtech.online" style="color: #4f46e5; text-decoration: none; font-weight: 500;">futureboundtech.online</a>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `;
+}
+
+/**
+ * Dispatch Personalized Job Opportunity Updates to Selected / All Candidates
+ */
+export async function sendJobOpportunityBroadcast({ recipients = [], heading, message, attachments = [], structuredData = null }) {
+  if (!recipients || recipients.length === 0) {
+    throw new Error('At least one recipient is required');
+  }
+  if (!heading || !heading.trim()) {
+    throw new Error('Subject heading is required');
+  }
+  if (!message || !message.trim()) {
+    throw new Error('Message body is required');
+  }
+
+  const results = {
+    total: recipients.length,
+    sentCount: 0,
+    failedCount: 0,
+    errors: []
+  };
+
+  const preparedAttachments = (attachments || []).map(att => ({
+    filename: att.filename || att.name || 'attachment.pdf',
+    content: att.content || att.base64 || '',
+    contentType: att.contentType || att.type || 'application/pdf'
+  }));
+
+  for (const recipient of recipients) {
+    const candidateEmail = recipient.email || (typeof recipient === 'string' ? recipient : null);
+    const candidateName = recipient.name || recipient.candidateName || 'Candidate';
+
+    if (!candidateEmail) {
+      results.failedCount++;
+      results.errors.push(`Skipped invalid recipient: ${JSON.stringify(recipient)}`);
+      continue;
+    }
+
+    try {
+      const emailHtml = renderJobUpdateEmailHtml({
+        heading,
+        candidateName,
+        messageContent: message,
+        attachments: preparedAttachments,
+        structuredData
+      });
+
+      const sendRes = await sendEmail({
+        to: candidateEmail,
+        subject: heading,
+        html: emailHtml,
+        attachments: preparedAttachments
+      });
+
+      if (sendRes.success) {
+        results.sentCount++;
+      } else {
+        results.failedCount++;
+        results.errors.push(`${candidateEmail}: ${sendRes.error || 'Failed to dispatch'}`);
+      }
+    } catch (sendErr) {
+      results.failedCount++;
+      results.errors.push(`${candidateEmail}: ${sendErr.message}`);
+    }
+  }
+
+  return results;
+}
+

@@ -20,7 +20,8 @@ import {
   Clock,
   ExternalLink,
   ChevronRight,
-  Award
+  Award,
+  AlertCircle
 } from 'lucide-react';
 import { COMPANY_NAME, CAREER_DOMAINS } from '../constants';
 import JobApplicationModal, { JobPosting } from './JobApplicationModal';
@@ -112,9 +113,42 @@ const Careers: React.FC<CareersProps> = ({ onBackToHome }) => {
     setIsDetailModalOpen(true);
   };
 
+  const [activeAppInfo, setActiveAppInfo] = useState<any>(null);
+  const [checkingActive, setCheckingActive] = useState(false);
+
+  const checkActiveApplication = async (emailToCheck?: string) => {
+    const emailVal = (emailToCheck !== undefined ? emailToCheck : formData.email).trim();
+    if (!emailVal || !emailVal.includes('@') || emailVal.length < 5) {
+      setActiveAppInfo(null);
+      return null;
+    }
+
+    try {
+      setCheckingActive(true);
+      const res = await fetch(`/api/job-applications/check-active?email=${encodeURIComponent(emailVal)}`);
+      const data = await res.json();
+      if (data.hasActiveApplication && data.activeApplication) {
+        setActiveAppInfo(data.activeApplication);
+        setError(`Active application already in progress for "${data.activeApplication.jobTitle}" (Status: ${data.activeApplication.status}).`);
+        return data.activeApplication;
+      } else {
+        setActiveAppInfo(null);
+        return null;
+      }
+    } catch (e) {
+      console.warn('Could not verify active application status:', e);
+      return null;
+    } finally {
+      setCheckingActive(false);
+    }
+  };
+
   const handleGeneralFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
+    if (name === 'email' && activeAppInfo) {
+      setActiveAppInfo(null);
+    }
   };
 
   const handleGeneralFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -129,6 +163,13 @@ const Careers: React.FC<CareersProps> = ({ onBackToHome }) => {
     setError('');
 
     try {
+      const active = await checkActiveApplication();
+      if (active) {
+        setError(`You already have an active application in progress for "${active.jobTitle}" (Status: ${active.status}). Multiple applications are not permitted.`);
+        setLoading(false);
+        return;
+      }
+
       const submitData = new FormData();
       Object.entries(formData).forEach(([key, value]) => {
         submitData.append(key, String(value));
@@ -157,7 +198,11 @@ const Careers: React.FC<CareersProps> = ({ onBackToHome }) => {
           message: ''
         });
         setResumeFile(null);
+        setActiveAppInfo(null);
       } else {
+        if (data.activeApplication) {
+          setActiveAppInfo(data.activeApplication);
+        }
         setError(data.message || 'Failed to submit application. Please try again.');
       }
     } catch (err: any) {
@@ -512,23 +557,43 @@ const Careers: React.FC<CareersProps> = ({ onBackToHome }) => {
                       </div>
 
                       <div>
-                        <label className="block text-sm font-bold uppercase tracking-widest text-gray-400 mb-2">
-                          Email Address <span className="text-red-400">*</span>
+                        <label className="block text-sm font-bold uppercase tracking-widest text-gray-400 mb-2 flex items-center justify-between">
+                          <span>Email Address <span className="text-red-400">*</span></span>
+                          {checkingActive && <span className="text-xs text-blue-400 flex items-center gap-1 font-normal lowercase"><Loader2 size={12} className="animate-spin" /> checking status...</span>}
                         </label>
                         <div className="relative">
                           <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" />
                           <input 
                             type="email" 
                             name="email"
-                            className="w-full bg-white/5 border border-white/10 rounded-xl pl-11 pr-4 py-3.5 focus:border-blue-500 focus:bg-white/[0.07] outline-none transition-all text-white placeholder-gray-500"
+                            className={`w-full bg-white/5 border rounded-xl pl-11 pr-4 py-3.5 outline-none transition-all text-white placeholder-gray-500 ${
+                              activeAppInfo ? 'border-amber-500/80 bg-amber-500/10' : 'border-white/10 focus:border-blue-500 focus:bg-white/[0.07]'
+                            }`}
                             placeholder="you@example.com"
                             value={formData.email}
                             onChange={handleGeneralFormChange}
+                            onBlur={() => checkActiveApplication()}
                             required
                           />
                         </div>
                       </div>
                     </div>
+
+                    {/* Active Application Warning Card */}
+                    {activeAppInfo && (
+                      <div className="p-5 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-200 text-xs flex items-start gap-3.5 animate-in fade-in zoom-in-95 duration-200">
+                        <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                        <div className="space-y-1">
+                          <p className="font-bold text-amber-300 text-sm">Active Application Already in Progress</p>
+                          <p className="text-gray-200 leading-relaxed text-xs">
+                            You currently have an active application under this email for <strong className="text-white">{activeAppInfo.jobTitle}</strong> (Status: <span className="px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 font-bold border border-amber-400/30">{activeAppInfo.status}</span>).
+                          </p>
+                          <p className="text-gray-400 text-[11px] leading-relaxed">
+                            Candidates are limited to one active application. You may submit another application once your current application is finalized (Hired or Dropped).
+                          </p>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Phone, State, City */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
